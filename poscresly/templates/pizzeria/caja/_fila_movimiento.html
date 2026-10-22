@@ -4,7 +4,7 @@ la hoja ⋯ del movimiento; los textos de la hoja ya vienen armados de la vista.
 Anular es solo de administradores: para un empleado la fila es de lectura.
 {% endcomment %}
 <li>
-  {% if fila.id and not fila.anulado and es_admin %}
+  {% if fila.id and not fila.anulado and es_admin and not cj.historico %}
   <button type="button" class="cj-mov cj-mov-{{ fila.tipo }} cj-mov-accion"
           data-cj-mov="{{ fila.id }}"
           data-titulo="{{ fila.titulo }}"
@@ -28,7 +28,7 @@ Anular es solo de administradores: para un empleado la fila es de lectura.
       <span class="cj-mov-monto">{{ fila.monto }}</span>
       <span class="cj-mov-saldo">{{ fila.saldo }}</span>
     </span>
-  {% if fila.id and not fila.anulado and es_admin %}
+  {% if fila.id and not fila.anulado and es_admin and not cj.historico %}
     <i class="bi bi-three-dots cj-mov-mas" aria-hidden="true"></i>
   </button>
   {% else %}

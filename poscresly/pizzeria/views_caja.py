@@ -1,15 +1,16 @@
 """Módulo Caja móvil (pizzeria/handoff_caja): turno, movimientos del cajón,
 retiro a bóveda y cortes anteriores. La cifra que manda es lo que debe haber
 en el cajón; se calcula aquí, nunca en la plantilla ni en JS."""
+import datetime
 import json
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -277,17 +278,99 @@ def _subheader(titulo, sub_pre='', sub_hi='', tono='neutro', sub_post='', back=N
     return subheader
 
 
+def _cj(caja=None):
+    """Lo que cambia entre módulos en las pantallas de caja (son las mismas
+    plantillas para Pizzería y Almuerzos, ver caja/views.py). Con un turno
+    cerrado, las pantallas son de solo lectura y apuntan a ese turno."""
+    historico = caja is not None and caja.estado == 'cerrada'
+    return {
+        'modulo': 'pizzeria',
+        'historico': historico,
+        'nav': 'components/pizzeria_bottom_nav.html',
+        'orden': 'orden',
+        'ordenes': 'órdenes',
+        'ordenes_titulo': 'Órdenes del turno',
+        'pagadas': 'órdenes pagadas',
+        'mixtas': 'órdenes mixtas',
+        'metodos_texto': 'Efectivo, tarjeta y transferencia',
+        'correccion': not historico,
+        'urls': {
+            'estado': reverse('pizzeria_caja_historico', args=[caja.id]) if historico else reverse('pizzeria_caja'),
+            'ordenes': (
+                reverse('pizzeria_caja_historico_ordenes', args=[caja.id]) if historico
+                else reverse('pizzeria_caja_ordenes_turno')
+            ),
+            'movimientos': (
+                reverse('pizzeria_caja_historico_movimientos', args=[caja.id]) if historico
+                else reverse('pizzeria_caja_movimientos')
+            ),
+            'cortes': reverse('pizzeria_caja_cortes'),
+            'cerrar': reverse('pizzeria_caja_cerrar'),
+            'cerrar_confirmar': reverse('pizzeria_caja_cerrar_confirmar'),
+            'retiro': reverse('pizzeria_caja_retiro'),
+            'movimiento': reverse('pizzeria_caja_movimiento'),
+            'anular': reverse('pizzeria_caja_anular_movimiento', args=[0]),
+            'corregir': reverse('pizzeria_caja_corregir_metodo', args=[0]),
+        },
+    }
+
+
+def _aviso_pendientes(n, singular, plural, verbo):
+    """Cinta del cierre: lo que todavía no entró a caja pasa al siguiente turno."""
+    if not n:
+        return None
+    return {
+        'fuerte': f'{n} {singular if n == 1 else plural}',
+        'resto': f'Si se {verbo[0] if n == 1 else verbo[1]} después, '
+                 f'{"entra" if n == 1 else "entran"} en el siguiente turno.',
+    }
+
+
 def _denominaciones():
     def filas(lista):
         return [{'clave': clave, 'etiqueta': etiqueta, 'valor': valor} for clave, etiqueta, valor in lista]
     return {'billetes': filas(BILLETES), 'monedas': filas(MONEDAS)}
 
 
+def _turno_pedido(turno_id):
+    """El turno que pide la URL: sin id, el abierto; con id, ese turno.
+    Devuelve (caja, redirección). Un id del turno abierto va a la pantalla normal."""
+    if turno_id is None:
+        caja = _caja_abierta()
+        return caja, (None if caja else redirect('pizzeria_caja_abrir'))
+    caja = get_object_or_404(CajaPizzeria.objects.select_related('abierta_por', 'cerrada_por'), pk=turno_id)
+    if caja.estado == 'abierta':
+        return caja, redirect('pizzeria_caja')
+    return caja, None
+
+
+def _subheader_historico(caja, titulo, back):
+    """Subheader de un turno cerrado: cuándo fue y quién lo cerró."""
+    cajero = _nombre_corto(caja.cerrada_por or caja.abierta_por)
+    return _subheader(
+        titulo, sub_pre=f'{_fecha_corta(caja.fecha_apertura)} · {_hora(caja.fecha_apertura)}–{_hora(caja.fecha_cierre)}',
+        sub_post=f' · {cajero}' if cajero else '', back=back,
+    )
+
+
+def _cierre(corte):
+    """Tarjeta principal de un turno cerrado: lo contado contra lo esperado."""
+    efectivo = CajaPizzeriaEfectivo.objects.filter(caja=corte['caja']).first()
+    contado = efectivo.monto_final if efectivo else None
+    return {
+        'contado': contado,
+        'resultado': corte['resultado'],
+        'diferencia': _texto_diferencia(corte),
+        'motivo': _motivo_cierre(corte['caja']),
+    }
+
+
 @login_required(login_url=LOGIN_URL)
-def estado_caja(request):
-    caja = _caja_abierta()
-    if caja is None:
-        return redirect('pizzeria_caja_abrir')
+def estado_caja(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
 
     turno = _resumen_turno(caja)
     vendido = turno['total_vendido']
@@ -308,7 +391,7 @@ def estado_caja(request):
     ultimo_en = ultimo_mov.creado_en if ultimo_mov else caja.fecha_apertura
     n_registros = movimientos.count() + 1  # + la apertura
 
-    ultimo = _ultimo_corte()
+    ultimo = None if historico else _ultimo_corte()
     corte_fila = None
     if ultimo:
         corte_fila = {
@@ -318,7 +401,16 @@ def estado_caja(request):
         }
 
     cajero = _nombre_corto(caja.abierta_por)
+    if historico:
+        subheader = _subheader_historico(caja, 'Turno cerrado', reverse('pizzeria_caja_cortes'))
+    else:
+        subheader = _subheader(
+            'Caja', sub_pre='Turno abierto ', sub_hi=_hace(caja.fecha_apertura), tono='ambar',
+            sub_post=f' · {cajero}' if cajero else '',
+        )
     return render(request, 'pizzeria/caja/estado.html', {
+        'cj': _cj(caja),
+        'cierre': _cierre(_corte(caja)) if historico else None,
         'turno': turno,
         'caja': caja,
         'formas_pago': formas_pago,
@@ -330,10 +422,7 @@ def estado_caja(request):
         'corte_fila': corte_fila,
         'denominaciones': _denominaciones(),
         'categorias': MovimientoCajaPizzeria.CATEGORIAS,
-        'subheader': _subheader(
-            'Caja', sub_pre='Turno abierto ', sub_hi=_hace(caja.fecha_apertura), tono='ambar',
-            sub_post=f' · {cajero}' if cajero else '',
-        ),
+        'subheader': subheader,
     })
 
 
@@ -390,6 +479,7 @@ def abrir_caja(request):
 
     ahora = timezone.now()
     return render(request, 'pizzeria/caja/abrir.html', {
+        'cj': _cj(),
         'valor_campo': valor_campo,
         'propuesto': propuesto,
         'atajos': [f'{a:.2f}' for a in ATAJOS_FONDO],
@@ -455,10 +545,11 @@ def _fila_movimiento(mov, esperado):
 
 
 @login_required(login_url=LOGIN_URL)
-def movimientos_caja(request):
-    caja = _caja_abierta()
-    if caja is None:
-        return redirect('pizzeria_caja_abrir')
+def movimientos_caja(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
 
     filtro = request.GET.get('tipo', 'todos')
     if filtro not in dict(FILTROS_MOVIMIENTOS):
@@ -489,7 +580,7 @@ def movimientos_caja(request):
             grupos.append({'fecha': fila['fecha'], 'titulo': _encabezado_dia(fila['fecha']), 'filas': []})
         grupos[-1]['filas'].append(fila)
 
-    base = reverse('pizzeria_caja_movimientos')
+    base = _cj(caja)['urls']['movimientos']
     chips = [
         {
             'label': etiqueta, 'value': clave, 'active': clave == filtro,
@@ -498,15 +589,21 @@ def movimientos_caja(request):
         }
         for clave, etiqueta in FILTROS_MOVIMIENTOS
     ]
+    if historico:
+        subheader = _subheader_historico(caja, 'Movimientos', _cj(caja)['urls']['estado'])
+        subheader['segunda'] = {'tipo': 'chips', 'chips': chips}
+    else:
+        subheader = _subheader(
+            'Movimientos', sub_pre='Turno de hoy · saldo ', sub_hi=_dinero(esperado),
+            back=reverse('pizzeria_caja'), chips=chips,
+        )
     return render(request, 'pizzeria/caja/movimientos.html', {
+        'cj': _cj(caja),
         'grupos': grupos,
         'filtro': filtro,
         'caja': caja,
         'motivos_anulacion': MOTIVOS_ANULACION,
-        'subheader': _subheader(
-            'Movimientos', sub_pre='Turno de hoy · saldo ', sub_hi=_dinero(esperado),
-            back=reverse('pizzeria_caja'), chips=chips,
-        ),
+        'subheader': subheader,
     })
 
 
@@ -532,12 +629,15 @@ def cerrar_caja(request):
     ordenes_abiertas = PedidoPizzeria.objects.filter(estado='abierto').count()
     cajero = _nombre_corto(caja.abierta_por)
     return render(request, 'pizzeria/caja/cerrar.html', {
+        'cj': _cj(),
         'caja': caja,
         'turno': turno,
         'desglose': _desglose_cajon(turno),
         'esperado_centavos': int(turno['esperado_en_caja'] * 100),
         'denominaciones': _denominaciones(),
-        'ordenes_abiertas': ordenes_abiertas,
+        'aviso_pendientes': _aviso_pendientes(
+            ordenes_abiertas, 'orden sin cobrar', 'órdenes sin cobrar', ('cobra', 'cobran'),
+        ),
         'cerrador_nombre': _nombre_completo(request.user),
         'turno_texto': f"Abierto {_hora(caja.fecha_apertura)}" + (f' por {cajero}' if cajero else ''),
         'subheader': _subheader(
@@ -554,24 +654,25 @@ def _franja(dt):
     return 'día' if timezone.localtime(dt).hour < 16 else 'noche'
 
 
-@login_required(login_url=LOGIN_URL)
-def cortes_caja(request):
-    filtro = request.GET.get('filtro', 'todos')
-    if filtro not in dict(FILTROS_CORTES):
-        filtro = 'todos'
+def _leer_fecha(valor):
+    """'AAAA-MM-DD' del selector de día → date, o None si no viene o no vale."""
+    try:
+        return datetime.date.fromisoformat((valor or '').strip()) if valor else None
+    except ValueError:
+        return None
 
-    cajas = (
-        CajaPizzeria.objects.filter(estado='cerrada', fecha_cierre__isnull=False)
-        .select_related('abierta_por', 'cerrada_por').order_by('-fecha_apertura')[:14]
+
+def _turnos_del_dia(modelo, fecha):
+    """Turnos que estuvieron abiertos ese día (también el que sigue abierto)."""
+    inicio = timezone.make_aware(datetime.datetime.combine(fecha, datetime.time.min))
+    fin = inicio + timedelta(days=1)
+    return modelo.objects.filter(fecha_apertura__lt=fin).filter(
+        Q(fecha_cierre__gte=inicio) | Q(fecha_cierre__isnull=True, estado='abierta'),
     )
-    cortes = [_corte(c) for c in cajas]
-    con_diferencia = sum(1 for c in cortes if c['resultado'] in ('faltante', 'sobrante'))
 
-    if filtro == 'diferencia':
-        cortes = [c for c in cortes if c['resultado'] in ('faltante', 'sobrante')]
-    elif filtro == 'mios':
-        cortes = [c for c in cortes if request.user.pk in (c['caja'].abierta_por_id, c['caja'].cerrada_por_id)]
 
+def _filas_cortes(cortes, url_turno, url_abierto):
+    """Filas de la lista de cortes agrupadas por semana. Cada fila lleva al turno."""
     hoy = timezone.localdate()
     inicio_semana = hoy - timedelta(days=hoy.weekday())
     grupos = []
@@ -584,9 +685,12 @@ def cortes_caja(request):
             grupo = 'SEMANA PASADA'
         else:
             grupo = 'ANTERIORES'
+        abierta = caja.estado == 'abierta'
         cajero = _nombre_corto(caja.cerrada_por or caja.abierta_por) or 'Sin cajero'
         motivo = _motivo_cierre(caja)
-        if corte['resultado'] in ('faltante', 'sobrante') and motivo:
+        if abierta:
+            sub = f"{cajero} · abrió {_hora(caja.fecha_apertura)} · {_dinero(corte['resumen']['total_vendido'])} vendido"
+        elif corte['resultado'] in ('faltante', 'sobrante') and motivo:
             sub = f'{cajero} · «{motivo}»'
         else:
             sub = f"{cajero} · cerró {_hora(caja.fecha_cierre)} · {_dinero(corte['resumen']['total_vendido'])} vendido"
@@ -595,33 +699,77 @@ def cortes_caja(request):
         grupos[-1]['filas'].append({
             'titulo': f'{_fecha_corta(caja.fecha_apertura)} · turno {_franja(caja.fecha_apertura)}',
             'sub': sub,
-            'resultado': corte['resultado'],
-            'diferencia': _texto_diferencia(corte),
-            'etiqueta': {
+            'url': url_abierto if abierta else url_turno(caja.id),
+            'resultado': 'abierta' if abierta else corte['resultado'],
+            'diferencia': '' if abierta else _texto_diferencia(corte),
+            'etiqueta': 'EN CURSO' if abierta else {
                 'cuadro': 'CUADRÓ', 'faltante': 'FALTANTE', 'sobrante': 'SOBRANTE', 'sin_conteo': 'SIN CONTEO',
             }[corte['resultado']],
         })
+    return grupos
 
-    base = reverse('pizzeria_caja_cortes')
+
+def _contexto_cortes(request, modelo, corte_de, url_cortes, url_turno, url_abierto, volver):
+    """Cortes anteriores, para los dos módulos. Con ?fecha= muestra los turnos
+    de ese día, sin el límite de los últimos 14."""
+    filtro = request.GET.get('filtro', 'todos')
+    if filtro not in dict(FILTROS_CORTES):
+        filtro = 'todos'
+    fecha = _leer_fecha(request.GET.get('fecha'))
+
+    if fecha:
+        cajas = list(_turnos_del_dia(modelo, fecha).select_related('abierta_por', 'cerrada_por').order_by('-fecha_apertura'))
+    else:
+        cajas = list(
+            modelo.objects.filter(estado='cerrada', fecha_cierre__isnull=False)
+            .select_related('abierta_por', 'cerrada_por').order_by('-fecha_apertura')[:14]
+        )
+    cortes = [corte_de(c) for c in cajas]
+    con_diferencia = sum(1 for c in cortes if c['resultado'] in ('faltante', 'sobrante') and c['caja'].estado == 'cerrada')
+
+    if filtro == 'diferencia':
+        cortes = [c for c in cortes if c['resultado'] in ('faltante', 'sobrante') and c['caja'].estado == 'cerrada']
+    elif filtro == 'mios':
+        cortes = [c for c in cortes if request.user.pk in (c['caja'].abierta_por_id, c['caja'].cerrada_por_id)]
+
+    sufijo = f'&fecha={fecha.isoformat()}' if fecha else ''
     chips = [
         {'label': etiqueta, 'value': clave, 'active': clave == filtro,
-         'url': base if clave == 'todos' else f'{base}?filtro={clave}'}
+         'url': (f'{url_cortes}?fecha={fecha.isoformat()}' if fecha else url_cortes) if clave == 'todos'
+         else f'{url_cortes}?filtro={clave}{sufijo}'}
         for clave, etiqueta in FILTROS_CORTES
     ]
     n = len(cajas)
-    if con_diferencia:
-        sub_hi, tono = f'{con_diferencia} con diferencia', 'rojo'
+    if fecha:
+        sub_pre = f"{_fecha_corta(timezone.make_aware(datetime.datetime.combine(fecha, datetime.time(12))))} · "
+        sub_hi, tono = (f"{n} turno{'s' if n != 1 else ''}", 'neutro') if n else ('sin turnos ese día', 'neutro')
     else:
-        sub_hi, tono = ('todos cuadraron', 'verde') if n else ('sin turnos cerrados', 'neutro')
-    volver = reverse('pizzeria_caja') if _caja_abierta() else reverse('pizzeria_caja_abrir')
-    return render(request, 'pizzeria/caja/cortes.html', {
-        'grupos': grupos,
+        sub_pre = f"Últimos {n} turno{'s' if n != 1 else ''} · " if n else ''
+        if con_diferencia:
+            sub_hi, tono = f'{con_diferencia} con diferencia', 'rojo'
+        else:
+            sub_hi, tono = ('todos cuadraron', 'verde') if n else ('sin turnos cerrados', 'neutro')
+    return {
+        'grupos': _filas_cortes(cortes, url_turno, url_abierto),
         'hay_turnos': bool(n),
+        'fecha': fecha.isoformat() if fecha else '',
+        'hoy': timezone.localdate().isoformat(),
+        'ayer': (timezone.localdate() - timedelta(days=1)).isoformat(),
+        'url_cortes': url_cortes,
         'subheader': _subheader(
-            'Cortes anteriores', sub_pre=f"Últimos {n} turno{'s' if n != 1 else ''} · " if n else '',
-            sub_hi=sub_hi, tono=tono, back=volver, chips=chips,
+            'Cortes anteriores', sub_pre=sub_pre, sub_hi=sub_hi, tono=tono, back=volver, chips=chips,
         ),
-    })
+    }
+
+
+@login_required(login_url=LOGIN_URL)
+def cortes_caja(request):
+    volver = reverse('pizzeria_caja') if _caja_abierta() else reverse('pizzeria_caja_abrir')
+    contexto = _contexto_cortes(
+        request, CajaPizzeria, _corte, reverse('pizzeria_caja_cortes'),
+        lambda turno_id: reverse('pizzeria_caja_historico', args=[turno_id]), reverse('pizzeria_caja'), volver,
+    )
+    return render(request, 'pizzeria/caja/cortes.html', {'cj': _cj(), **contexto})
 
 
 # ===== Acciones (POST JSON) =====
@@ -898,10 +1046,11 @@ def _resumen_ordenes_turno(caja):
 
 
 @login_required(login_url=LOGIN_URL)
-def ordenes_turno(request):
-    caja = _caja_abierta()
-    if caja is None:
-        return redirect('pizzeria_caja_abrir')
+def ordenes_turno(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
 
     filtro = request.GET.get('filtro', 'todas')
     if filtro not in dict(FILTROS_ORDENES_TURNO):
@@ -933,7 +1082,7 @@ def ordenes_turno(request):
                 'subtotal': subtotales[clave], 'conteo': f"{n} {_plural(n, 'orden', 'órdenes')}",
             })
 
-    base = reverse('pizzeria_caja_ordenes_turno')
+    base = _cj(caja)['urls']['ordenes']
     chips = [
         {
             'label': etiqueta, 'active': clave == filtro, 'count': conteos[clave],
@@ -949,11 +1098,13 @@ def ordenes_turno(request):
         'Órdenes del turno',
         sub_pre=f"{conteos['todas']} {_plural(conteos['todas'], 'pagada', 'pagadas')} · ",
         sub_hi=_dinero(sum((f['total'] for f in todas), Decimal('0.00'))),
-        back=reverse('pizzeria_caja'),
+        sub_post=f' · {_fecha_corta(caja.fecha_apertura)}' if historico else '',
+        back=_cj(caja)['urls']['estado'],
         chips=chips if len(chips) > 1 else None,
     )
 
     return render(request, 'pizzeria/caja/ordenes_turno.html', {
+        'cj': _cj(caja),
         'caja': caja,
         'grupos': grupos,
         'filtro': filtro,

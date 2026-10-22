@@ -3,6 +3,7 @@ from django.db import transaction
 from django.db.models import F, Value
 from django.db.models.functions import Greatest
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from datetime import date
@@ -359,17 +360,12 @@ def agregar_al_carrito(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def guardar_pedido(request):
-    # Buscar caja abierta actual o crear una nueva para hoy
+    # Sin caja abierta, se abre sola para no frenar la venta (con el fondo
+    # que dejó el cierre anterior; ver caja/turno.py).
+    from caja.turno import abrir_automatica
     caja = CajaDiaria.objects.filter(estado='abierta').first()
-    
     if not caja:
-        # No hay caja abierta, crear una nueva para hoy
-        caja = CajaDiaria.objects.create(
-            fecha=date.today(),
-            estado='abierta'
-        )
-        CajaEfectivo.objects.create(caja_diaria=caja, monto_inicial=0)
-        CajaTransferencia.objects.create(caja_diaria=caja, monto_inicial=0)
+        caja = abrir_automatica()
 
     try:
         tipo_pedido = request.POST.get('tipo_pedido')
@@ -842,6 +838,7 @@ def marcar_pedido_completado(request):
         
         pedido = Pedido.objects.get(id=pedido_id)
         pedido.estado = 'completado'
+        pedido.completado_en = timezone.now()
         pedido.save()
         
         # Enviar mensaje WebSocket
@@ -1074,8 +1071,12 @@ def marcar_pedidos_completados(request):
             return JsonResponse({'status': 'error', 'message': 'No se proporcionaron IDs de pedidos'})
         
         # Actualizar pedidos
-        pedidos_actualizados = Pedido.objects.filter(id__in=pedido_ids, estado='pendiente')
-        cantidad_actualizada = pedidos_actualizados.update(estado='completado')
+        # Se leen antes del update: después, el filtro por 'pendiente' ya no
+        # devuelve nada y la suma a caja de abajo quedaba en cero.
+        pedidos_actualizados = list(Pedido.objects.filter(id__in=pedido_ids, estado='pendiente'))
+        cantidad_actualizada = Pedido.objects.filter(
+            pk__in=[p.pk for p in pedidos_actualizados], estado='pendiente',
+        ).update(estado='completado', completado_en=timezone.now())
         
         # Sumar a caja los pedidos que se marcaron como completados
         from caja.models import CajaDiaria

@@ -3,8 +3,10 @@
 
 {% block title %}Órdenes del turno · Caja · Cresly POS{% endblock %}
 
+{% block body_class %}{% if cj.modulo == 'almuerzos' %} almuerzos-page{% endif %}{% endblock %}
+
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=4">
 <link rel="stylesheet" href="{% static 'CSS/pizzeria-caja-ordenes.css' %}">
 {% endblock %}
 
@@ -41,12 +43,14 @@
               <span class="ot-fila-monto">${{ fila.total|floatformat:2 }}</span>
               <i class="bi bi-chevron-down ot-caret" aria-hidden="true"></i>
             </button>
+            {% if cj.correccion %}
             <button type="button" class="ot-mas" aria-label="Acciones de {{ fila.titulo }}"
                     data-ot-orden="{{ fila.id }}" data-titulo="{{ fila.titulo }}" data-sub="{{ fila.hoja_sub }}"
                     data-metodo="{{ fila.metodo }}" data-centavos="{{ fila.centavos }}"
                     data-aviso="{{ fila.aviso|default:'' }}">
               <i class="bi bi-three-dots" aria-hidden="true"></i>
             </button>
+            {% endif %}
           </div>
 
           {% if fila.desglose %}
@@ -98,14 +102,14 @@
       {% if grupo.clave == 'efectivo' %}
       <div class="ot-pie">
         {% if efectivo_en_mixtas %}
-        <div class="ot-pie-fila"><span>+ parte en efectivo de órdenes mixtas</span><strong>${{ efectivo_en_mixtas|floatformat:2 }}</strong></div>
+        <div class="ot-pie-fila"><span>+ parte en efectivo de {{ cj.mixtas }}</span><strong>${{ efectivo_en_mixtas|floatformat:2 }}</strong></div>
         {% endif %}
-        <div class="ot-pie-fila"><span>Retiros al cajón del turno</span><a href="{% url 'pizzeria_caja_movimientos' %}" class="ot-pie-enlace">ver Movimientos ›</a></div>
+        <div class="ot-pie-fila"><span>Retiros al cajón del turno</span><a href="{{ cj.urls.movimientos }}" class="ot-pie-enlace">ver Movimientos ›</a></div>
       </div>
       {% endif %}
     </section>
     {% empty %}
-    <p class="cj-vacio">{% if filtro == 'todas' %}Todavía no hay órdenes pagadas en este turno.{% else %}No hay órdenes {{ filtro }} en este turno.{% endif %}</p>
+    <p class="cj-vacio">{% if filtro == 'todas' %}Todavía no hay {{ cj.pagadas }} en este turno.{% else %}No hay {{ cj.ordenes }} {{ filtro }} en este turno.{% endif %}</p>
     {% endfor %}
 
     {% if grupos %}
@@ -114,15 +118,16 @@
       <div class="ot-totales-fila"><span>{{ fila.etiqueta }}</span><span>${{ fila.monto|floatformat:2 }}</span></div>
       {% endfor %}
       <div class="ot-totales-final"><span>{% if filtro == 'todas' %}Vendido en el turno{% else %}Total de lo filtrado{% endif %}</span><span>${{ total_turno|floatformat:2 }}</span></div>
-      <p class="ot-totales-nota">{% if filtro == 'todas' %}Coincide con lo vendido en Caja. Los retiros y el fondo inicial están en Movimientos.{% else %}Solo suma las órdenes del filtro activo.{% endif %}</p>
+      <p class="ot-totales-nota">{% if filtro == 'todas' %}Coincide con lo vendido en Caja. Los retiros y el fondo inicial están en Movimientos.{% else %}Solo suma {% if cj.modulo == 'almuerzos' %}los pedidos{% else %}las órdenes{% endif %} del filtro activo.{% endif %}</p>
     </section>
     {% endif %}
   </main>
 
-  {% include 'components/pizzeria_bottom_nav.html' %}
+  {% include cj.nav %}
 
 </div>
 
+{% if cj.correccion %}
 {% comment %}Hoja ⋯: una sola acción, sin ZONA DE RIESGO (corregir no destruye nada).{% endcomment %}
 <div class="offcanvas offcanvas-bottom cj-hoja" tabindex="-1" id="otHojaAcciones" aria-labelledby="otAccTitulo">
   <div class="cj-hoja-asa" aria-hidden="true"></div>
@@ -189,6 +194,8 @@
   </div>
 </div>
 
+{% endif %}
+
 <div class="cj-aviso" id="cjAviso" role="status" aria-live="polite"></div>
 {% endblock %}
 
@@ -197,10 +204,10 @@
 <script>
   window.CJ = {
     turnoId: {{ caja.id }},
-    urls: { corregir: "{% url 'pizzeria_caja_corregir_metodo' 0 %}" },
+    urls: { corregir: "{{ cj.urls.corregir }}" },
   };
   window.OT_SUBTOTALES = {{ subtotales_centavos|safe }};
 </script>
 <script src="{% static 'JS/pizzeria_caja.js' %}?v=2"></script>
-<script src="{% static 'JS/pizzeria_caja_ordenes.js' %}"></script>
+{% if cj.correccion %}<script src="{% static 'JS/pizzeria_caja_ordenes.js' %}"></script>{% endif %}
 {% endblock %}

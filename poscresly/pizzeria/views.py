@@ -193,12 +193,28 @@ def pizzeria_logout(request):
 
 # ===== MAPA DE MESAS =====
 
-def _formatear_tiempo_transcurrido(fecha):
-    minutos = int((timezone.now() - fecha).total_seconds() // 60)
+def _duracion_corta(minutos):
+    """'12 min' · '2 h 05' · '44 d 13 h'. Pasadas 24 h los minutos ya no
+    importan, y "1069 h 49" no se lee de un vistazo."""
+    minutos = max(0, int(minutos))
     if minutos < 60:
-        return f"{minutos} min"
+        return f'{minutos} min'
     horas, resto = divmod(minutos, 60)
-    return f"{horas} h {resto:02d}"
+    if horas < 24:
+        return f'{horas} h {resto:02d}'
+    dias, horas = divmod(horas, 24)
+    return f'{dias} d {horas} h'
+
+
+def _pct_texto(pct):
+    """Porcentaje para mostrar: un método con algo de venta nunca dice "0"."""
+    if 0 < pct < 1:
+        return '<1'
+    return str(round(pct))
+
+
+def _formatear_tiempo_transcurrido(fecha):
+    return _duracion_corta((timezone.now() - fecha).total_seconds() // 60)
 
 
 @login_required(login_url=LOGIN_URL)
@@ -769,9 +785,7 @@ def _tarjeta_orden(pedido):
         # hora: sin hora no se inventa un tiempo.
         envios = [i.enviado_en for i in items if i.estado == 'cocina' and i.enviado_en]
         if envios:
-            minutos = max(0, int((timezone.now() - min(envios)).total_seconds() // 60))
-            horas, resto = divmod(minutos, 60)
-            derecha = f'{horas} h {resto:02d}' if horas else f'{minutos} min'
+            derecha = _duracion_corta((timezone.now() - min(envios)).total_seconds() // 60)
             derecha_tiempo = True
 
     # Sub-línea: los platillos (el combo cuenta como uno), no su estado.
@@ -856,10 +870,7 @@ def _tiempo_relativo_corto(fecha):
     minutos_totales = max(0, int((timezone.now() - fecha).total_seconds() // 60))
     if minutos_totales < 1:
         return 'justo ahora'
-    horas, minutos = divmod(minutos_totales, 60)
-    if horas < 1:
-        return f'hace {minutos} min'
-    return f'hace {horas} h {minutos:02d}'
+    return f'hace {_duracion_corta(minutos_totales)}'
 
 
 def _sub_hi_tono_pedido(pedido):
@@ -1225,11 +1236,14 @@ def inicio_movil(request):
         hora_apertura = None
     else:
         pagos_turno = PagoPedido.objects.contables().filter(creado_en__gte=caja_actual.fecha_apertura)
+        if caja_actual.fecha_cierre:
+            pagos_turno = pagos_turno.filter(creado_en__lte=caja_actual.fecha_cierre)
         fondo_inicial_efectivo = caja_actual.caja_efectivo.monto_inicial
         hora_apertura = timezone.localtime(caja_actual.fecha_apertura)
 
+    # 'pagos', no órdenes: una orden pagada con dos métodos cuenta en los dos.
     totales_metodo = {
-        row['metodo']: {'total': row['total'], 'ordenes': row['n']}
+        row['metodo']: {'total': row['total'], 'pagos': row['n']}
         for row in pagos_turno.values('metodo').annotate(total=Sum('monto'), n=Count('id'))
     }
     total_ventas_turno = sum((v['total'] for v in totales_metodo.values()), Decimal('0'))
@@ -1242,19 +1256,26 @@ def inicio_movil(request):
     # apilada) se calcula aquí, no en el template.
     caja_metodos = []
     for nombre, slug, color in METODOS_CAJA:
-        datos = totales_metodo.get(nombre, {'total': Decimal('0'), 'ordenes': 0})
+        datos = totales_metodo.get(nombre, {'total': Decimal('0'), 'pagos': 0})
         pct = (datos['total'] / total_ventas_turno * 100) if total_ventas_turno else Decimal('0')
         caja_metodos.append({
             'nombre': nombre,
             'slug': slug,
             'color': color,
             'total': datos['total'],
-            'ordenes': datos['ordenes'],
-            'pct': round(pct),
+            'pagos': datos['pagos'],
+            'pct': _pct_texto(pct),
+            # El ancho va sin redondear para que los segmentos llenen la barra.
+            'ancho': f'{pct:.2f}',
         })
 
-    efectivo_total = totales_metodo.get('Efectivo', {'total': Decimal('0')})['total']
-    efectivo_en_gaveta = efectivo_total + fondo_inicial_efectivo
+    # Mismo cálculo que la pantalla de Caja: fondo + efectivo cobrado +
+    # ingresos − retiros − gastos (los pagos de moto se registran como gasto).
+    if caja_actual is None:
+        efectivo_en_gaveta = Decimal('0')
+    else:
+        from .views_caja import _resumen_turno  # views_caja importa de este módulo
+        efectivo_en_gaveta = _resumen_turno(caja_actual)['esperado_en_caja']
 
     pedidos_abiertos = PedidoPizzeria.objects.filter(estado='abierto')
     total_sin_cobrar = (
@@ -3282,13 +3303,15 @@ def dashboard_caja_pizzeria(request):
         monto_inicial_efectivo = monto_inicial_transferencia = monto_inicial_tarjeta = Decimal('0')
         gastos = GastoPizzeria.objects.none()
     else:
+        pagos_turno = PagoPedido.objects.contables().filter(creado_en__gte=caja_abierta.fecha_apertura)
+        # Los pedidos cobrados en este turno, aunque se hayan creado antes de
+        # abrir la caja: se buscan por sus pagos, igual que los totales.
         pedidos_cobrados = PedidoPizzeria.objects.filter(
-            estado='cobrado', fecha_creacion__gte=caja_abierta.fecha_apertura
+            estado='cobrado', pk__in=pagos_turno.values('pedido'),
         ).order_by('-fecha_creacion')
         totales = {
-            row['metodo']: row['total'] for row in PagoPedido.objects.contables().filter(
-                creado_en__gte=caja_abierta.fecha_apertura,
-            ).values('metodo').annotate(total=Sum('monto'))
+            row['metodo']: row['total']
+            for row in pagos_turno.values('metodo').annotate(total=Sum('monto'))
         }
         total_efectivo = totales.get('Efectivo', Decimal('0'))
         total_transferencia = totales.get('Transferencia', Decimal('0'))

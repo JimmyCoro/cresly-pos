@@ -3,8 +3,10 @@
 
 {% block title %}Movimientos · Caja · Cresly POS{% endblock %}
 
+{% block body_class %}{% if cj.modulo == 'almuerzos' %} almuerzos-page{% endif %}{% endblock %}
+
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -29,11 +31,11 @@
     {% endfor %}
   </main>
 
-  {% include 'components/pizzeria_bottom_nav.html' %}
+  {% include cj.nav %}
 
 </div>
 
-{% include 'pizzeria/caja/_hoja_acciones_movimiento.html' %}
+{% if not cj.historico %}{% include 'pizzeria/caja/_hoja_acciones_movimiento.html' %}{% endif %}
 <div class="cj-aviso" id="cjAviso" role="status" aria-live="polite"></div>
 {% endblock %}
 
@@ -42,7 +44,7 @@
 <script>
   window.CJ = {
     turnoId: {{ caja.id }},
-    urls: { anular: "{% url 'pizzeria_caja_anular_movimiento' 0 %}" },
+    urls: { anular: "{{ cj.urls.anular }}" },
   };
 </script>
 <script src="{% static 'JS/pizzeria_caja.js' %}?v=2"></script>

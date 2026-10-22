@@ -3,8 +3,10 @@
 
 {% block title %}Cerrar caja · Cresly POS{% endblock %}
 
+{% block body_class %}{% if cj.modulo == 'almuerzos' %} almuerzos-page{% endif %}{% endblock %}
+
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'CSS/pizzeria-caja.css' %}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -16,10 +18,10 @@
 
   <main class="cj-content cj-content-barra cj-content-cierre">
 
-    {% if ordenes_abiertas %}
+    {% if aviso_pendientes %}
     <div class="cj-cinta" role="status">
       <span class="cj-cinta-dot" aria-hidden="true"></span>
-      <span>Hay <strong>{{ ordenes_abiertas }} orden{{ ordenes_abiertas|pluralize:"es" }} sin cobrar</strong>. Si se cobra{{ ordenes_abiertas|pluralize:"n" }} después, entra{{ ordenes_abiertas|pluralize:"n" }} en el siguiente turno.</span>
+      <span>Hay <strong>{{ aviso_pendientes.fuerte }}</strong>. {{ aviso_pendientes.resto }}</span>
     </div>
     {% endif %}
 
@@ -89,7 +91,7 @@
   window.CJ = {
     turnoId: {{ caja.id }},
     esperadoCentavos: {{ esperado_centavos }},
-    urls: { cerrar: "{% url 'pizzeria_caja_cerrar_confirmar' %}" },
+    urls: { cerrar: "{{ cj.urls.cerrar_confirmar }}" },
   };
 </script>
 <script src="{% static 'JS/pizzeria_caja.js' %}?v=2"></script>
