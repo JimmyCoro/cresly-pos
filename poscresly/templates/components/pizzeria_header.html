@@ -1,6 +1,6 @@
 {% load static %}
 <!-- Header fijo · handoff_header. Byte-idéntico en toda la app: menú,
-     marca, tema (sin lógica todavía) y usuario. No recibe contexto por
+     marca (lleva al otro módulo), tema y usuario. No recibe contexto por
      vista — todo lo que muestra es fijo o viene de request.user.
      Marca: solo la C del logo (a 34 px el logo completo no se lee). -->
 <header class="pzh-header">
@@ -8,7 +8,8 @@
     <i class="bi bi-list"></i>
   </button>
   {% if '/pizzeria/' in request.path %}
-  <a href="{% url 'pizzeria_inicio' %}" class="pzh-brand">
+  <!-- La marca lleva al otro módulo: Pizzería ↔ Almuerzos, sin abrir el menú. -->
+  <a href="{% url 'inicio' %}" class="pzh-brand" title="Ir a Cresly Almuerzos">
     <img class="pzh-brand-mark" src="{% static 'IMG/logo-c.png' %}" alt="" width="34" height="34">
     <span class="pzh-brand-text">
       <span class="pzh-brand-name">Cresly Pizzería</span>
@@ -23,14 +24,15 @@
   </a>
   {% else %}
   <!-- Mismo header en Almuerzos: solo cambia el nombre del módulo. -->
-  <a href="{% url 'inicio' %}" class="pzh-brand">
+  <a href="{% url 'pizzeria_inicio' %}" class="pzh-brand" title="Ir a Cresly Pizzería">
     <img class="pzh-brand-mark" src="{% static 'IMG/logo-c.png' %}" alt="" width="34" height="34">
     <span class="pzh-brand-text">
       <span class="pzh-brand-name">Cresly Almuerzos</span>
     </span>
   </a>
   {% endif %}
-  <button type="button" class="pzh-theme-btn" aria-label="Cambiar a tema oscuro (próximamente)" title="Próximamente">
+  <!-- La lógica del tema está en static/JS/tema.js (cargado en el <head>). -->
+  <button type="button" class="pzh-theme-btn" aria-label="Cambiar a tema oscuro" title="Cambiar a tema oscuro">
     <i class="bi bi-moon"></i>
   </button>
   <button type="button" class="pzh-user" id="pzhUserBtn" aria-label="Cuenta" aria-haspopup="true" aria-expanded="false" aria-controls="pzhCuenta">

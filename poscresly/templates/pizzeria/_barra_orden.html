@@ -1,0 +1,28 @@
+{% comment %}
+  Barra de orden (pizzeria/handoff_barra_orden). Flota sobre el tab bar
+  desde que se abre el catálogo, aunque la orden esté vacía. Solo ≤1023px:
+  en escritorio el panel lateral ya muestra datos y pedido.
+  - Izquierda: modo y datos del cliente → abre la hoja "Datos de la orden".
+  - Derecha: N items · total → abre la hoja "Pedido".
+  Los textos y estados los pinta pizzeria_venta_rapida.js (renderBarra) a
+  partir de una sola regla: camposFaltantes().
+{% endcomment %}
+<div class="vr-bo" id="vrBarraOrden">
+  <button type="button" class="vr-bo-datos{% if not pedido_abierto %} vr-bo-pendiente{% endif %}" id="vrBarraDatos"
+          aria-haspopup="dialog" aria-controls="vrTipoSheet"{% if pedido_abierto %} disabled{% endif %}>
+    <span class="vr-bo-datos-textos">
+      <span class="vr-bo-datos-titulo" id="vrBarraDatosTitulo">
+        {% if pedido_abierto %}Pedido #{{ pedido_abierto.numero_pedido_completo }}{% else %}Llevar · sin cliente{% endif %}
+      </span>
+      <span class="vr-bo-datos-sub" id="vrBarraDatosSub">
+        {% if pedido_abierto %}Agregando productos{% else %}Toca para modo y datos{% endif %}
+      </span>
+    </span>
+    {% if not pedido_abierto %}<span class="vr-bo-chevron" aria-hidden="true">›</span>{% endif %}
+  </button>
+  <button type="button" class="vr-bo-pedido" id="vrBarraPedido" aria-haspopup="dialog" aria-controls="vrCart">
+    <span class="vr-bo-pedido-num" id="vrBarraPedidoNum">0 items</span>
+    <span class="vr-bo-pedido-total" id="vrBarraPedidoTotal">$0.00</span>
+  </button>
+</div>
+<div class="pz-sheet-backdrop" id="vrPedidoBackdrop"></div>

@@ -4,9 +4,10 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'CSS/pizzeria-mapa.css' %}?v=17">
 <link rel="stylesheet" href="{% static 'CSS/pizzeria-pedido.css' %}">
-<link rel="stylesheet" href="{% static 'CSS/pizzeria-venta-rapida.css' %}?v=20">
+<link rel="stylesheet" href="{% static 'CSS/pizzeria-venta-rapida.css' %}?v=21">
 <link rel="stylesheet" href="{% static 'CSS/pizzeria-combo.css' %}?v=4">
 <link rel="stylesheet" href="{% static 'CSS/pizzeria-cart-bar.css' %}">
+<link rel="stylesheet" href="{% static 'CSS/pizzeria-barra-orden.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -61,10 +62,17 @@
           <div class="vr-cart-header-info">
             <span class="vr-cart-titulo">Pedido</span>
             <span class="vr-cart-numero" id="vrNumeroOrden">#{% if pedido_abierto %}{{ pedido_abierto.numero_pedido_completo }}{% else %}{{ proximo_numero|stringformat:"03d" }}{% endif %}</span>
-            {% if not pedido_abierto %}<span class="vr-cart-tipo-pill" id="vrCartTipoPill">Llevar <i class="fas fa-chevron-down"></i></span>{% endif %}
           </div>
+          <span class="vr-cart-conteo" id="vrCartConteo">0 items</span>
           <button type="button" class="vr-cart-vaciar" id="vrVaciar">Vaciar</button>
         </div>
+
+        {% if not pedido_abierto %}
+        <!-- Tarjeta de entrega (handoff_barra_orden §5): resume modo y datos
+             arriba de los items. Solo en móvil; en escritorio los datos
+             están en línea dentro de este mismo panel. La arma el JS. -->
+        <div class="vr-entrega" id="vrEntrega"></div>
+        {% endif %}
 
         {% if pedido_abierto %}
         <div class="pz-pedido-actual mb-3">
@@ -84,10 +92,10 @@
         {% endif %}
 
         <div id="vrTipoYDatos">
-          <div class="vr-modo-tabs{% if pedido_abierto %} d-none{% endif %}" id="vrTipoTabs">
-            <button type="button" class="vr-modo-tab" data-tipo="mesa">Servirse</button>
-            <button type="button" class="vr-modo-tab vr-modo-tab-active" data-tipo="llevar">Llevar</button>
-            <button type="button" class="vr-modo-tab" data-tipo="delivery">Delivery</button>
+          <div class="vr-modo-tabs{% if pedido_abierto %} d-none{% endif %}" id="vrTipoTabs" role="tablist" aria-label="Modo de la orden">
+            <button type="button" class="vr-modo-tab{% if tipo_inicial == 'mesa' %} vr-modo-tab-active{% endif %}" data-tipo="mesa">Servirse</button>
+            <button type="button" class="vr-modo-tab{% if tipo_inicial == 'llevar' %} vr-modo-tab-active{% endif %}" data-tipo="llevar">Llevar</button>
+            <button type="button" class="vr-modo-tab{% if tipo_inicial == 'delivery' %} vr-modo-tab-active{% endif %}" data-tipo="delivery">Delivery</button>
           </div>
 
           <div class="vr-modo-divider{% if pedido_abierto %} d-none{% endif %}"></div>
@@ -128,39 +136,36 @@
             </div>
 
             <div class="vr-modo-group d-none" id="vrGrupoDelivery">
-              <div class="vr-modo-row-2col">
-                <div>
-                  <span class="vr-modo-label">TELÉFONO</span>
-                  <input type="tel" id="vrTelefonoDelivery" class="vr-modo-input vr-modo-input-tel" placeholder="09XX-XXXXXX" inputmode="tel">
-                </div>
-                <div>
-                  <span class="vr-modo-label">NOMBRE</span>
-                  <input type="text" id="vrNombreDelivery" class="vr-modo-input" placeholder="Nombre del cliente">
-                </div>
+              <label class="vr-modo-label" for="vrTelefonoDelivery">TELÉFONO</label>
+              <input type="tel" id="vrTelefonoDelivery" class="vr-modo-input vr-modo-input-tel" placeholder="09XX-XXXXXX" inputmode="tel" autocomplete="off">
+              <!-- Cliente conocido por teléfono: "Usar" llena nombre y última dirección. -->
+              <div class="vr-cliente-conocido" id="vrClienteConocido" hidden>
+                <span class="vr-cliente-conocido-texto" id="vrClienteConocidoTexto"></span>
+                <button type="button" class="vr-cliente-conocido-usar" id="vrClienteConocidoUsar">Usar</button>
               </div>
 
-              <span class="vr-modo-label vr-modo-label-mt">DIRECCIÓN Y REFERENCIA</span>
+              <label class="vr-modo-label vr-modo-label-mt" for="vrNombreDelivery">NOMBRE</label>
+              <input type="text" id="vrNombreDelivery" class="vr-modo-input" placeholder="Nombre del cliente" autocomplete="off">
+
+              <label class="vr-modo-label vr-modo-label-mt" for="vrNotasDelivery">DIRECCIÓN Y REFERENCIA</label>
               <textarea id="vrNotasDelivery" class="vr-modo-input vr-modo-textarea" rows="2" placeholder="Dirección y puntos de referencia"></textarea>
 
-              <span class="vr-modo-label vr-modo-label-mt">FORMA DE PAGO</span>
+              <span class="vr-modo-label vr-modo-label-mt">PAGO</span>
               <div class="vr-modo-pago" id="vrPagoDeliveryTabs">
                 <button type="button" class="vr-modo-pago-btn" data-valor="efectivo">Efectivo</button>
                 <button type="button" class="vr-modo-pago-btn" data-valor="transferencia">Transferencia</button>
               </div>
 
               <div class="vr-modo-label-row vr-modo-label-mt">
-                <span class="vr-modo-label">VALOR DE LA MOTO</span>
+                <span class="vr-modo-label mb-0">MOTO</span>
                 <span class="vr-modo-help-inline">se suma al total</span>
               </div>
+              <!-- Una sola fila que se desplaza; el valor elegido queda a la vista. -->
               <div class="vr-modo-envio" id="vrCostoEnvioTabs">
-                <button type="button" class="vr-modo-envio-btn" data-valor="2.00">$2.00</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="2.25">$2.25</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="2.50">$2.50</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="2.75">$2.75</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="3.00">$3.00</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="3.25">$3.25</button>
-                <button type="button" class="vr-modo-envio-btn" data-valor="3.50">$3.50</button>
-                <input type="number" id="vrValorMoto" class="vr-modo-envio-otro" placeholder="Otro" min="0" step="0.01">
+                {% for valor in valores_moto %}
+                <button type="button" class="vr-modo-envio-btn" data-valor="{{ valor }}">${{ valor }}</button>
+                {% endfor %}
+                <input type="number" id="vrValorMoto" class="vr-modo-envio-otro" placeholder="Otro" min="0" step="0.01" inputmode="decimal">
               </div>
             </div>
           </div>
@@ -172,14 +177,18 @@
         <div class="vr-cart-totales">
           <div class="vr-total-row"><span>Subtotal</span><span id="vrSubtotal">$0.00</span></div>
           <div class="vr-total-row"><span>IVA 15%</span><span id="vrIva">$0.00</span></div>
+          <div class="vr-total-row" id="vrMotoFila" hidden><span>Moto</span><span id="vrMoto">$0.00</span></div>
           <div class="vr-total-row vr-total-final"><span>Total</span><span id="vrTotal">$0.00</span></div>
         </div>
 
+        <!-- El botón dice el siguiente paso (§5): agregar productos,
+             completar datos o confirmar. El texto lo pone el JS. -->
         <div class="vr-cart-acciones">
-          <button type="button" class="vr-cart-btn-confirmar" id="vrBtnConfirmarImprimir" disabled onclick="vrGuardarPedido(true)">
-            <i class="fas fa-print"></i>{% if pedido_abierto %}Agregar e Imprimir{% else %}Confirmar e Imprimir{% endif %}
+          <button type="button" class="vr-cart-btn-confirmar" id="vrBtnConfirmarImprimir" disabled>
+            {% if pedido_abierto %}Agregar e imprimir{% else %}Confirmar e imprimir{% endif %}
           </button>
-          <span class="vr-cart-btn-nota">Imprime la comanda para cocina</span>
+          <span class="vr-falta" id="vrFaltaPedido" hidden></span>
+          <span class="vr-cart-btn-nota" id="vrNotaPedido">Imprime la comanda para cocina</span>
         </div>
       </div>
 
@@ -187,20 +196,36 @@
   </div>
 </div>
 
-{% include 'components/_pz_cart_bar.html' %}
+{% include 'pizzeria/_barra_orden.html' %}
 
-<!-- Hoja de "Modo de la orden" (solo mobile/tablet, ≤1023px). En desktop
-     #vrTipoYDatos vive inline dentro de #vrCart (barra lateral siempre
-     visible) — este shell queda vacío y oculto. El botón "⋯" del subheader
-     (#pzshMasOpciones) es quien la abre; ver pizzeria_venta_rapida.js.
-     Sin fila de cierre aparte: se cierra tocando el overlay, Esc o el botón
-     "Continuar" — igual que en handoff_pos_movil/README.md. -->
+<!-- Hoja "Datos de la orden" (handoff_barra_orden §4; solo ≤1023px). En
+     desktop #vrTipoYDatos vive inline dentro de #vrCart y esta hoja queda
+     vacía y oculta. La abre la zona izquierda de la barra de orden. Sin ✕:
+     se cierra con el overlay, Esc o el botón de abajo. -->
 <div class="pz-sheet-backdrop" id="vrTipoSheetBackdrop"></div>
-<div class="pz-cart-sheet vr-modo-sheet" id="vrTipoSheet">
+<div class="pz-cart-sheet vr-modo-sheet" id="vrTipoSheet" role="dialog" aria-modal="true" aria-labelledby="vrDatosTitulo">
   <div class="pz-cart-sheet-handle"></div>
-  <span class="vr-modo-titulo">Modo de la orden</span>
+  <div class="vr-modo-cabecera">
+    <span class="vr-modo-titulo" id="vrDatosTitulo">Datos de la orden</span>
+    <span class="vr-modo-numero" id="vrDatosNumero">#{{ numero_str }}</span>
+  </div>
   <div id="vrTipoSheetBody"></div>
-  <button type="button" class="vr-modo-continuar" id="vrTipoSheetListo">Continuar</button>
+  <div class="vr-modo-pie">
+    <button type="button" class="vr-modo-continuar" id="vrTipoSheetListo">Volver al menú</button>
+    <span class="vr-falta" id="vrFaltaDatos" hidden></span>
+    <span class="vr-modo-pie-nota" id="vrNotaDatos" hidden>Sin productos todavía · los datos quedan en esta orden</span>
+  </div>
+</div>
+
+<!-- Hoja del "⋯": acciones secundarias y zona de riesgo. El modo de la
+     orden ya no está aquí, va en la barra de orden. -->
+<div class="pz-sheet-backdrop" id="vrMasBackdrop"></div>
+<div class="pz-cart-sheet vr-mas-sheet" id="vrMasSheet" role="dialog" aria-modal="true" aria-label="Más opciones">
+  <div class="pz-cart-sheet-handle"></div>
+  <a href="{% url 'pizzeria_mapa_mesas' %}" class="vr-mas-fila"><i class="bi bi-grid-3x3-gap"></i>Ver mapa de mesas</a>
+  <a href="{% url 'pizzeria_ordenes' %}" class="vr-mas-fila"><i class="bi bi-list-ul"></i>Ver órdenes</a>
+  <span class="vr-mas-riesgo-label">ZONA DE RIESGO</span>
+  <button type="button" class="vr-mas-fila vr-mas-fila-riesgo" id="vrMasVaciar"><i class="bi bi-trash3"></i>Vaciar pedido</button>
 </div>
 
 <!-- Hoja del configurador de combos (handoff_combo/README.md).
@@ -253,26 +278,18 @@
   window.PZ_PEDIDO_ID = {% if pedido_abierto %}{{ pedido_abierto.id }}{% else %}null{% endif %};
   window.PZ_NUMERO_STR = "{{ numero_str }}";
   window.PZ_MESERO_NOMBRE = "{{ mesero_nombre|escapejs }}";
+  window.PZ_TIPO_INICIAL = "{{ tipo_inicial }}";
   window.PZ_URLS = {
     calcularPrecio: "{% url 'pizzeria_calcular_precio' %}",
     guardarPedido: "{% url 'pizzeria_guardar_pedido' %}",
+    buscarCliente: "{% url 'pizzeria_buscar_cliente' %}",
     ordenes: "{% url 'pizzeria_ordenes' %}",
     mapaMesas: "{% url 'pizzeria_mapa_mesas' %}",
     {% if pedido_abierto %}detalleOrden: "{% url 'pizzeria_detalle_orden' pedido_abierto.id %}",{% endif %}
   };
 </script>
+{# pizzeria_cart_bar.js solo aporta pzMoverAlBodyEnMobile; la barra de orden la maneja pizzeria_venta_rapida.js. #}
 <script src="{% static 'JS/pizzeria_cart_bar.js' %}"></script>
 <script src="{% static 'JS/pizzeria_combo.js' %}?v=6"></script>
-<script src="{% static 'JS/pizzeria_venta_rapida.js' %}?v=17"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    pzInitCartBar({
-      itemsId: 'vrCartItems',
-      totalId: 'vrTotal',
-      sheetId: 'vrCart',
-      closeId: 'vrCartSheetClose',
-      itemSelector: '.vr-cart-item',
-    });
-  });
-</script>
+<script src="{% static 'JS/pizzeria_venta_rapida.js' %}?v=19"></script>
 {% endblock %}

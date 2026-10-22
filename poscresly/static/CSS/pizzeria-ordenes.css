@@ -242,6 +242,17 @@
 .or-sub-ambar { font-weight: 800; color: var(--or-amber-text); }
 .or-sub-rojo { font-weight: 800; color: var(--or-brand); }
 .or-sub-tenue { font-weight: 700; color: var(--or-faint); }
+/* Hora en que se tomó la orden: junto al título, sin encogerse; si falta
+   espacio se recorta la etiqueta de pagado, no la hora. */
+.or-card-hora {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--or-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.or-card-hora .bi { margin-right: 3px; font-size: 10.5px; }
 
 /* Pagada por adelantado: azul (como el modo en Cobrar) y no verde, para que
    no se confunda con el verde de "todo servido". */

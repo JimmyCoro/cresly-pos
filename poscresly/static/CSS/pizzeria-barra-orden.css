@@ -1,0 +1,364 @@
+/* =====================================================================
+   Barra de orden + hojas "Datos de la orden" y "Pedido"
+   (pizzeria/handoff_barra_orden). Pantalla Nueva orden de Pizzería.
+   Se carga después de pizzeria-venta-rapida.css y pizzeria-cart-bar.css
+   para ganarles la cascada.
+   ===================================================================== */
+
+:root {
+  --bo-ink: #14181d;
+  --bo-surface: #242b33;
+  --bo-surface-off: #2b333b;
+  --bo-brand: #c8102e;
+  --bo-pendiente: #e02040;
+  --bo-aviso: #ff8a9b;
+  --bo-tenue: #a8afb8;
+}
+
+/* ===== Barra de orden (solo ≤1023px) ===== */
+.vr-bo { display: none; }
+
+@media (max-width: 1023px) {
+  .vr-bo {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    /* 12 px por encima del tab bar (su altura real la fija el bottom nav). */
+    bottom: calc(var(--pz-bottomnav-h, 78px) + 12px);
+    z-index: 1015; /* debajo de los fondos de las hojas (1020) */
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 16px;
+    background: var(--bo-ink);
+    box-shadow: 0 10px 22px rgba(20, 24, 29, .22);
+    font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Que la última fila de productos no quede bajo la barra. */
+  .vr-grid-scroll::after {
+    height: calc(var(--pz-bottomnav-h, 88px) + 76px);
+  }
+}
+
+.vr-bo-datos {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--bo-surface);
+  color: #fff;
+  text-align: left;
+}
+.vr-bo-datos:disabled { opacity: 1; cursor: default; }
+.vr-bo-pendiente { outline: 1.5px solid var(--bo-pendiente); outline-offset: -1.5px; }
+
+.vr-bo-datos-textos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.vr-bo-datos-titulo,
+.vr-bo-datos-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-bo-datos-titulo { font-size: 13.5px; font-weight: 800; letter-spacing: -.01em; }
+.vr-bo-datos-sub { font-size: 11px; font-weight: 700; color: var(--bo-tenue); }
+.vr-bo-datos-sub.vr-bo-sub-aviso { color: var(--bo-aviso); }
+.vr-bo-chevron { flex: 0 0 auto; font-size: 17px; font-weight: 700; color: var(--bo-tenue); }
+
+.vr-bo-pedido {
+  flex: 0 0 auto;
+  min-width: 78px;
+  height: 48px;
+  padding: 0 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: var(--bo-surface-off);
+  color: #8d97a2;
+  transition: background .15s ease, color .15s ease;
+}
+.vr-bo-pedido-activo { background: var(--bo-brand); color: #fff; }
+.vr-bo-pedido-num { font-size: 14px; font-weight: 800; white-space: nowrap; }
+.vr-bo-pedido-total { font-size: 10.5px; font-weight: 700; opacity: .8; white-space: nowrap; }
+
+.vr-bo-pulso { animation: vr-bo-pulso .32s ease; }
+@keyframes vr-bo-pulso {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vr-bo-pulso { animation: none; }
+}
+
+/* ===== Hojas: estilo común (§4) ===== */
+@media (max-width: 1023px) {
+  #vrTipoSheet.pz-cart-sheet,
+  #vrCart.pz-cart-sheet,
+  #vrMasSheet.pz-cart-sheet {
+    border-radius: 22px 22px 0 0;
+    padding: 14px 16px 20px;
+    max-height: calc(100vh - var(--pz-bottomnav-h, 78px) - 40px);
+    max-height: calc(100dvh - var(--pz-bottomnav-h, 78px) - 40px);
+  }
+  #vrTipoSheet .pz-cart-sheet-handle,
+  #vrCart .pz-cart-sheet-handle,
+  #vrMasSheet .pz-cart-sheet-handle {
+    width: 38px;
+    background: #dfe2e7;
+    margin: 0 auto 12px;
+  }
+  #vrTipoSheetBackdrop.active,
+  #vrPedidoBackdrop.active,
+  #vrMasBackdrop.active {
+    background: rgba(20, 24, 29, .42);
+  }
+}
+
+/* La hoja del ⋯ y el fondo de Pedido no existen en escritorio. */
+@media (min-width: 1024px) {
+  #vrMasSheet,
+  #vrMasBackdrop,
+  #vrPedidoBackdrop {
+    display: none !important;
+  }
+}
+
+/* ===== Hoja "Datos de la orden" (§4) ===== */
+.vr-modo-sheet { gap: 12px; }
+.vr-modo-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.vr-modo-titulo { font-size: 19px; }
+.vr-modo-numero { font-size: 11px; font-weight: 700; color: #8a929c; }
+
+/* El botón queda siempre a la vista al final de la hoja. */
+.vr-modo-pie {
+  position: sticky;
+  bottom: -20px;
+  margin: 4px -16px -20px;
+  padding: 10px 16px 20px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.vr-modo-continuar {
+  height: 52px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--bo-brand);
+  box-shadow: 0 8px 20px rgba(200, 16, 46, .26);
+}
+.vr-modo-continuar:disabled {
+  background: #e9ebef;
+  color: var(--bo-tenue);
+  box-shadow: none;
+}
+.vr-modo-pie-nota { font-size: 11px; font-weight: 700; color: #8a929c; text-align: center; }
+
+.vr-falta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bo-brand);
+  text-align: center;
+}
+
+/* Selector de modo segmentado: un solo bloque gris con el activo en negro. */
+.vr-modo-tabs {
+  gap: 0;
+  padding: 4px;
+  border-radius: 13px;
+  background: #f4f5f7;
+}
+.vr-modo-tab {
+  height: 38px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #5b6673;
+}
+.vr-modo-tab-active,
+.vr-modo-tab-active[data-tipo="delivery"] {
+  background: var(--bo-ink);
+  color: #fff;
+  font-weight: 800;
+}
+
+.vr-modo-input { min-height: 46px; }
+.vr-modo-input-tel { min-height: 48px; }
+.vr-modo-input-tel:focus { border: 1.5px solid var(--bo-ink); }
+.vr-modo-textarea { min-height: 58px; }
+.vr-modo-chip { min-height: 38px; border-radius: 999px; }
+.vr-modo-pago-btn { height: 40px; padding: 0 6px; }
+
+/* Cliente conocido por teléfono. */
+.vr-cliente-conocido {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #eaf6ef;
+  border: 1px solid #cfeadb;
+  color: #1c7a4a;
+}
+.vr-cliente-conocido[hidden] { display: none; }
+.vr-cliente-conocido-texto {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-cliente-conocido-usar {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  color: #1c7a4a;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+/* Moto en una sola fila que se desplaza (antes, dos filas de 4). */
+.vr-modo-envio {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 16px; /* sin esto el ajuste pega el primer valor al borde */
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+}
+.vr-modo-envio::-webkit-scrollbar { display: none; }
+.vr-modo-envio-btn,
+.vr-modo-envio-otro {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 14px;
+  scroll-snap-align: start;
+}
+.vr-modo-envio-btn-active {
+  background: #fff;
+  color: var(--bo-ink);
+  border: 1.5px solid var(--bo-ink);
+}
+.vr-modo-envio-otro { width: 76px; color: #8a929c; }
+.vr-modo-envio-otro-activo { border: 1.5px solid var(--bo-ink); color: var(--bo-ink); }
+
+/* En escritorio el panel lateral es angosto: la fila no se sale del panel. */
+@media (min-width: 1024px) {
+  .vr-modo-envio { margin: 0; padding: 0 0 2px; }
+}
+
+/* ===== Hoja "Pedido" (§5) ===== */
+.vr-cart-header-info { flex: 1; }
+.vr-cart-conteo { font-size: 12px; font-weight: 700; color: #8a929c; white-space: nowrap; }
+
+.vr-entrega {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fafbfc;
+  border: 1px solid #e6e8ec;
+}
+.vr-entrega-falta {
+  padding: 0;
+  background: #fdecef;
+  border-color: #f4d3d9;
+}
+.vr-entrega-toque {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: none;
+  background: none;
+  text-align: left;
+}
+.vr-entrega-textos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vr-entrega-etiqueta { font-size: 10.5px; font-weight: 800; letter-spacing: .09em; color: #8a929c; }
+.vr-entrega-falta .vr-entrega-etiqueta { color: var(--bo-brand); }
+.vr-entrega-principal { font-size: 14px; font-weight: 800; color: var(--bo-ink); }
+.vr-entrega-linea { font-size: 12px; font-weight: 600; color: #5b6673; }
+.vr-entrega-linea-recorte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vr-entrega-linea-fuerte { font-weight: 700; color: #4a545f; }
+.vr-entrega-chevron { flex: 0 0 auto; font-size: 18px; font-weight: 800; color: var(--bo-brand); }
+.vr-entrega-editar {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #dfe2e7;
+  background: #fff;
+  color: var(--bo-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* En escritorio los datos están en el panel: la tarjeta sobra. */
+@media (min-width: 1024px) {
+  .vr-entrega { display: none; }
+}
+
+.vr-total-final span:last-child { font-size: 26px; letter-spacing: -.02em; }
+
+/* "Completar datos de entrega ›": negro, no rojo — aún no se confirma nada. */
+.vr-cart-btn-confirmar.vr-btn-completar {
+  background: var(--bo-ink);
+  box-shadow: 0 8px 18px rgba(20, 24, 29, .22);
+}
+.vr-cart-btn-confirmar.vr-btn-completar:hover { background: var(--bo-ink); }
+
+/* ===== Hoja del ⋯ ===== */
+.vr-mas-sheet { display: flex; flex-direction: column; }
+.vr-mas-fila {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 4px;
+  border: none;
+  border-bottom: 1px solid #eef0f3;
+  background: none;
+  color: var(--bo-ink);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+}
+.vr-mas-fila i { width: 22px; font-size: 18px; color: #5b6673; }
+.vr-mas-riesgo-label {
+  margin-top: 18px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  color: #8a929c;
+}
+.vr-mas-fila-riesgo { color: var(--bo-brand); border-bottom: none; }
+.vr-mas-fila-riesgo i { color: var(--bo-brand); }
