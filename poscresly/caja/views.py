@@ -1,336 +1,647 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
+"""Caja de Almuerzos con el mismo diseño y funciones que la de Pizzería
+(pizzeria/handoff_caja): turno, órdenes del turno, movimientos del cajón,
+retiro a bóveda, arqueo al cerrar y cortes anteriores.
+
+Las plantillas son las de templates/pizzeria/caja/; lo que cambia entre
+módulos va en `cj` (direcciones, barra inferior y palabras). Los ayudantes
+de formato, conteo y validación se reutilizan de pizzeria.views_caja; el
+cálculo del turno es propio de Almuerzos (caja/turno.py)."""
+from decimal import Decimal
+
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
-from datetime import date
-from .models import CajaDiaria, CajaEfectivo, CajaTransferencia, Gasto
+from django.views.decorators.http import require_http_methods
+
+from inicio.permisos import rol_de, solo_admin
 from pedidos.models import Pedido
 from pedidos.views import obtener_productos_pedido
-from menu.models import MenuDia
-from collections import defaultdict
-from inicio.permisos import solo_admin
+from pizzeria.views_caja import (
+    ATAJOS_FONDO,
+    CENTAVO,
+    FILTROS_MOVIMIENTOS,
+    MOTIVOS_ANULACION,
+    NOMBRE_TIPO,
+    UMBRAL_RETIRO,
+    _aviso_pendientes,
+    _contexto_cortes,
+    _denominaciones,
+    _desglose_cajon,
+    _dia_relativo,
+    _dinero,
+    _encabezado_dia,
+    _error,
+    _esperado_si_se_anula,
+    _fecha_corta,
+    _fila_movimiento,
+    _hace,
+    _hora,
+    _leer_conteo,
+    _leer_json,
+    _mensaje_faltantes,
+    _motivo_cierre,
+    _nombre_completo,
+    _nombre_corto,
+    _parse_monto,
+    _plural,
+    _subheader,
+    _subheader_historico,
+    _texto_diferencia,
+    campos_faltantes,
+)
+from pizzeria.views import LOGIN_URL
 
-def dashboard_caja(request):
-    """Vista principal de caja - Dashboard"""
-    hoy = date.today()
-    
-    # Obtener la caja abierta actual (cualquier fecha) o la última caja del día
-    caja_abierta = CajaDiaria.objects.filter(estado='abierta').first()
-    caja_hoy = CajaDiaria.objects.filter(fecha=hoy).order_by('-fecha_apertura').first()
-    
-    # Solo usar datos si hay caja abierta; si está cerrada, mostrar ceros
-    caja_actual = caja_abierta if caja_abierta else None
-    
-    # Si NO hay caja abierta, mostrar todo en ceros
-    if not caja_actual:
-        pedidos_hoy = Pedido.objects.none()
-        total_efectivo = 0
-        total_transferencia = 0
-        pedidos_efectivo = 0
-        pedidos_transferencia = 0
-    else:
-        # Solo calcular si hay caja abierta
-        # Obtener pedidos completados DESDE QUE SE ABRIÓ LA CAJA (no todo el día)
-        pedidos_hoy = Pedido.objects.filter(
-            fecha_creacion__gte=caja_actual.fecha_apertura,
-            estado='completado'
-        ).order_by('-fecha_creacion')
-        
-        # Calcular totales REALES desde los pedidos completados del día
-        total_efectivo = 0
-        total_transferencia = 0
-        pedidos_efectivo = 0
-        pedidos_transferencia = 0
-        
-        for pedido in pedidos_hoy:
-            # Un pedido mixto suma cada parte a su medio y cuenta en ambos.
-            efectivo, transferencia = pedido.montos_por_medio()
-            if efectivo > 0 or pedido.forma_pago == 'Efectivo':
-                total_efectivo += efectivo
-                pedidos_efectivo += 1
-            if transferencia > 0 or pedido.forma_pago == 'Transferencia':
-                total_transferencia += transferencia
-                pedidos_transferencia += 1
-    
-    # Obtener montos iniciales y finales de la caja si existe
-    if caja_actual:
-        monto_inicial_efectivo = caja_actual.caja_efectivo.monto_inicial
-        monto_inicial_transferencia = caja_actual.caja_transferencia.monto_inicial
-        monto_final_efectivo = caja_actual.caja_efectivo.monto_final
-        monto_final_transferencia = caja_actual.caja_transferencia.monto_final
-    else:
-        # Si no hay caja abierta, mostrar ceros
-        monto_inicial_efectivo = 0
-        monto_inicial_transferencia = 0
-        monto_final_efectivo = 0
-        monto_final_transferencia = 0
-    
-    # Obtener gastos del día si existe caja
-    gastos_hoy = []
-    if caja_actual:
-        gastos_hoy = caja_actual.gastos.all()
-    
-    # Total de pedidos (no la suma por medio: un mixto contaría dos veces)
-    total_pedidos_caja = pedidos_hoy.count()
+from . import turno as T
+from .models import CajaDiaria, CajaEfectivo, CajaTransferencia, MovimientoCaja
 
-    # Resumen por pedido (items, tipo, forma de pago, total) para la tabla del dashboard
-    pedidos_resumen = [
-        {'pedido': pedido, 'items': obtener_productos_pedido(pedido)}
-        for pedido in pedidos_hoy
-    ]
-    
-    # Análisis de productos vendidos del día (solo si hay caja abierta)
-    productos_vendidos = defaultdict(lambda: {'cantidad': 0, 'total_ventas': 0, 'tipo': ''})
-    
-    # Obtener menú del día
-    try:
-        menu_hoy = MenuDia.objects.get(fecha=hoy)
-    except MenuDia.DoesNotExist:
-        menu_hoy = None
-    
-    # Solo analizar productos si hay caja abierta
-    if caja_actual and menu_hoy:
-        # Analizar almuerzos vendidos
-        for pedido in pedidos_hoy:
-            for almuerzo in pedido.almuerzos.all():
-                sopa_nombre = almuerzo.sopa.sopa.nombre_plato
-                segundo_nombre = almuerzo.segundo.segundo.nombre_plato
-                
-                # Contar sopa
-                productos_vendidos[sopa_nombre]['cantidad'] += almuerzo.cantidad
-                productos_vendidos[sopa_nombre]['total_ventas'] += almuerzo.precio_unitario * almuerzo.cantidad
-                productos_vendidos[sopa_nombre]['tipo'] = 'Sopa'
-                
-                # Contar segundo
-                productos_vendidos[segundo_nombre]['cantidad'] += almuerzo.cantidad
-                productos_vendidos[segundo_nombre]['total_ventas'] += almuerzo.precio_unitario * almuerzo.cantidad
-                productos_vendidos[segundo_nombre]['tipo'] = 'Segundo'
-            
-            # Analizar sopas vendidas individualmente
-            for sopa in pedido.sopas.all():
-                sopa_nombre = sopa.sopa.sopa.nombre_plato
-                productos_vendidos[sopa_nombre]['cantidad'] += sopa.cantidad
-                productos_vendidos[sopa_nombre]['total_ventas'] += sopa.precio_unitario * sopa.cantidad
-                productos_vendidos[sopa_nombre]['tipo'] = 'Sopa'
-            
-            # Analizar segundos vendidos individualmente
-            for segundo in pedido.segundos.all():
-                segundo_nombre = segundo.segundo.segundo.nombre_plato
-                productos_vendidos[segundo_nombre]['cantidad'] += segundo.cantidad
-                productos_vendidos[segundo_nombre]['total_ventas'] += segundo.precio_unitario * segundo.cantidad
-                productos_vendidos[segundo_nombre]['tipo'] = 'Segundo'
-    
-    # Convertir a lista ordenada por cantidad vendida
-    productos_ordenados = sorted(
-        productos_vendidos.items(), 
-        key=lambda x: x[1]['cantidad'], 
-        reverse=True
-    )
-    
-    # Obtener datos semanales para el gráfico (lunes a viernes)
-    from datetime import timedelta
-    datos_semana = []
-    dias_semana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie']
-    
-    # Calcular el lunes de esta semana
-    hoy_weekday = hoy.weekday()  # 0=lunes, 6=domingo
-    lunes_semana = hoy - timedelta(days=hoy_weekday)
-    
-    for i in range(5):  # Lunes a viernes
-        fecha_dia = lunes_semana + timedelta(days=i)
-        
-        # Si es hoy y no hay caja abierta, mostrar ceros
-        if fecha_dia == hoy and not caja_actual:
-            datos_semana.append({
-                'dia': dias_semana[i],
-                'ventas': 0,
-                'pedidos': 0
-            })
-        else:
-            # Obtener pedidos del día (SOLO COMPLETADOS)
-            pedidos_dia = Pedido.objects.filter(fecha_creacion__date=fecha_dia, estado='completado')
-            
-            # Calcular ventas del día
-            ventas_dia = sum(p.total for p in pedidos_dia)
-            
-            datos_semana.append({
-                'dia': dias_semana[i],
-                'ventas': round(ventas_dia, 2),
-                'pedidos': pedidos_dia.count()
-            })
-       
-    # Datos por hora para el gráfico de evolución
-    total_ventas = total_efectivo + total_transferencia
-    total_gastos = sum(g.monto for g in gastos_hoy)
-    balance_neto = total_ventas - total_gastos
 
-    ventas_por_hora = defaultdict(float)
-    if caja_actual:
-        for pedido in pedidos_hoy:
-            hora = timezone.localtime(pedido.fecha_creacion).hour
-            ventas_por_hora[hora] += float(pedido.total)
 
-    hora_actual = timezone.localtime().hour
-    hora_fin = max(hora_actual, 15)
-    datos_horas = [
-        {'hora': f"{h:02d}:00", 'ventas': round(ventas_por_hora.get(h, 0), 2)}
-        for h in range(8, hora_fin + 1)
-    ]
-
-    total_metodos = pedidos_efectivo + pedidos_transferencia
-    porcentaje_efectivo = round((pedidos_efectivo / total_metodos * 100) if total_metodos > 0 else 0)
-
-    context = {
-        'caja_hoy': caja_actual,
-        'caja_abierta': caja_abierta,
-        'pedidos_hoy': pedidos_hoy,
-        'pedidos_resumen': pedidos_resumen,
-        'gastos_hoy': gastos_hoy,
-        'total_efectivo': total_efectivo,
-        'total_transferencia': total_transferencia,
-        'total_ventas': total_ventas,
-        'total_gastos': total_gastos,
-        'balance_neto': balance_neto,
-        'monto_inicial_efectivo': monto_inicial_efectivo,
-        'monto_inicial_transferencia': monto_inicial_transferencia,
-        'monto_final_efectivo': monto_final_efectivo,
-        'monto_final_transferencia': monto_final_transferencia,
-        'pedidos_efectivo': pedidos_efectivo,
-        'pedidos_transferencia': pedidos_transferencia,
-        'total_pedidos_caja': total_pedidos_caja,
-        'productos_vendidos': productos_ordenados,
-        'menu_hoy': menu_hoy,
-        'datos_semana': datos_semana,
-        'datos_horas': datos_horas,
-        'porcentaje_efectivo': porcentaje_efectivo,
+def _cj(caja=None):
+    historico = caja is not None and caja.estado == 'cerrada'
+    return {
+        'modulo': 'almuerzos',
+        'historico': historico,
+        'nav': 'components/almuerzos_tab_bar.html',
+        'orden': 'pedido',
+        'ordenes': 'pedidos',
+        'pagadas': 'pedidos pagados',
+        'mixtas': 'pedidos mixtos',
+        'ordenes_titulo': 'Pedidos del turno',
+        'metodos_texto': 'Efectivo y transferencia',
+        'correccion': False,  # en Almuerzos el método se elige al tomar el pedido
+        'urls': {
+            'estado': reverse('caja_historico', args=[caja.id]) if historico else reverse('dashboard_caja'),
+            'ordenes': (
+                reverse('caja_historico_pedidos', args=[caja.id]) if historico else reverse('caja_pedidos_turno')
+            ),
+            'movimientos': (
+                reverse('caja_historico_movimientos', args=[caja.id]) if historico else reverse('caja_movimientos')
+            ),
+            'cortes': reverse('caja_cortes'),
+            'cerrar': reverse('cerrar_caja'),
+            'cerrar_confirmar': reverse('caja_cerrar_confirmar'),
+            'retiro': reverse('caja_retiro'),
+            'movimiento': reverse('caja_movimiento'),
+            'anular': reverse('caja_anular_movimiento', args=[0]),
+            'corregir': '',
+        },
     }
-    
-    return render(request, 'caja/caja.html', context)
 
-@csrf_exempt
-@require_http_methods(["POST"])
+
+def _corte(caja):
+    """Resultado de un turno cerrado: diferencia = contado al cerrar − esperado."""
+    resumen = T.resumen_turno(caja)
+    efectivo = T.efectivo_de(caja)
+    contado = efectivo.monto_final if efectivo else None
+    if contado is None:
+        resultado, diferencia = 'sin_conteo', None
+    else:
+        diferencia = (contado - resumen['esperado_en_caja']).quantize(CENTAVO)
+        resultado = 'cuadro' if diferencia == 0 else ('faltante' if diferencia < 0 else 'sobrante')
+    return {'caja': caja, 'resumen': resumen, 'diferencia': diferencia, 'resultado': resultado}
+
+
+def _turno_pedido(turno_id):
+    """El turno que pide la URL: sin id, el abierto; con id, ese turno.
+    Devuelve (caja, redirección). Un id del turno abierto va a la pantalla normal."""
+    if turno_id is None:
+        caja = T.caja_abierta()
+        return caja, (None if caja else redirect('abrir_caja'))
+    caja = get_object_or_404(CajaDiaria.objects.select_related('abierta_por', 'cerrada_por'), pk=turno_id)
+    if caja.estado == 'abierta':
+        return caja, redirect('dashboard_caja')
+    return caja, None
+
+
+def _cierre(corte):
+    """Tarjeta principal de un turno cerrado: lo contado contra lo esperado."""
+    efectivo = T.efectivo_de(corte['caja'])
+    return {
+        'contado': efectivo.monto_final if efectivo else None,
+        'resultado': corte['resultado'],
+        'diferencia': _texto_diferencia(corte),
+        'motivo': _motivo_cierre(corte['caja']),
+    }
+
+
+def _caja_para_movimiento(turno_id):
+    """Bloquea la caja del POST; un movimiento nunca va contra un turno cerrado."""
+    try:
+        turno_id = int(turno_id)
+    except (TypeError, ValueError):
+        return None
+    caja = CajaDiaria.objects.select_for_update().filter(pk=turno_id).first()
+    if caja is None or caja.estado != 'abierta':
+        return None
+    return caja
+
+
+# ===== Pedidos del turno =====
+
+GRUPOS_METODO = [('Efectivo', 'EFECTIVO'), ('Transferencia', 'TRANSFERENCIA'), ('Mixto', 'MIXTO')]
+FILTROS_PEDIDOS_TURNO = [('todas', 'Todos'), ('mixtas', 'Mixtos')]
+
+
+def _items_pedido(pedido):
+    items = []
+    for item in obtener_productos_pedido(pedido):
+        componentes = item.get('componentes') or []
+        nombre = item.get('nombre') or ' · '.join(componentes)
+        if item.get('tipo') and item['tipo'] != 'Extra':
+            nombre = f"{item['tipo']} · {nombre}" if nombre else item['tipo']
+        items.append({
+            'cantidad': item['cantidad'],
+            'nombre': nombre,
+            'precio': _dinero(Decimal(str(item['precio_unitario'])) * item['cantidad']),
+        })
+    return items
+
+
+def _fila_pedido_turno(pedido):
+    efectivo, transferencia = pedido.montos_por_medio()
+    metodo = pedido.forma_pago if pedido.forma_pago in ('Efectivo', 'Transferencia') else 'Mixto'
+    titulo = f'{pedido.tipo} · #{pedido.numero_dia:03d}'
+    if pedido.tipo == 'Servirse' and pedido.numero_mesa:
+        titulo = f'Mesa {pedido.numero_mesa} · #{pedido.numero_dia:03d}'
+    sub = [_hora(pedido.cobrado_en)] + ([pedido.contacto] if pedido.contacto else [])
+    return {
+        'id': pedido.id,
+        'titulo': titulo,
+        'sub': ' · '.join(sub),
+        'pagada_en': pedido.cobrado_en,
+        'total': pedido.total,
+        'metodo': metodo,
+        'editada': False,
+        'items': _items_pedido(pedido),
+        'recibido': None,
+        'cambio': None,
+        'desglose': (
+            [{'metodo': 'Efectivo', 'monto': efectivo}, {'metodo': 'Transferencia', 'monto': transferencia}]
+            if metodo == 'Mixto' else []
+        ),
+        'efectivo_en_mixta': efectivo if metodo == 'Mixto' else Decimal('0.00'),
+    }
+
+
+def _pedidos_turno(caja):
+    pedidos = T.pedidos_del_turno(caja).prefetch_related(
+        'almuerzos__sopa__sopa', 'almuerzos__segundo__segundo', 'almuerzos__jugo__jugo',
+        'sopas__sopa__sopa', 'sopas__jugo__jugo', 'segundos__segundo__segundo', 'segundos__jugo__jugo', 'extras',
+    ).order_by('cobrado_en')
+    return [_fila_pedido_turno(p) for p in pedidos]
+
+
+def _resumen_pedidos_turno(caja):
+    filas = _pedidos_turno(caja)
+    total = sum((f['total'] for f in filas), Decimal('0.00'))
+    return f"{len(filas)} {_plural(len(filas), 'pagado', 'pagados')} · {_dinero(total)}"
+
+
+# ===== Pantallas =====
+
+@login_required(login_url=LOGIN_URL)
+def dashboard_caja(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
+
+    turno = T.resumen_turno(caja)
+    vendido = turno['total_vendido']
+    formas_pago = [
+        {
+            'nombre': nombre, 'monto': turno[clave], 'color': color,
+            'pct': round(turno[clave] / vendido * 100) if vendido else 0,
+        }
+        for nombre, clave, color in [
+            ('Efectivo', 'ventas_efectivo', '#14181d'),
+            ('Transferencia', 'ventas_transferencia', '#a8afb8'),
+        ]
+    ]
+
+    movimientos = caja.movimientos.filter(anulado=False)
+    ultimo_mov = movimientos.order_by('-creado_en').first()
+    ultimo_en = ultimo_mov.creado_en if ultimo_mov else caja.fecha_apertura
+    n_registros = movimientos.count() + 1  # + la apertura
+
+    anterior = None if historico else T.ultima_cerrada()
+    corte_fila = None
+    if anterior:
+        corte = _corte(anterior)
+        corte_fila = {
+            'dia': _dia_relativo(anterior.fecha_cierre),
+            'diferencia': _texto_diferencia(corte),
+            'resultado': corte['resultado'],
+        }
+
+    cajero = _nombre_corto(caja.abierta_por)
+    if historico:
+        subheader = _subheader_historico(caja, 'Turno cerrado', reverse('caja_cortes'))
+    else:
+        subheader = _subheader(
+            'Caja', sub_pre='Turno abierto ', sub_hi=_hace(caja.fecha_apertura), tono='ambar',
+            sub_post=f' · {cajero}' if cajero else '',
+        )
+    return render(request, 'pizzeria/caja/estado.html', {
+        'cj': _cj(caja),
+        'cierre': _cierre(_corte(caja)) if historico else None,
+        'turno': turno,
+        'caja': caja,
+        'formas_pago': formas_pago,
+        'esperado_centavos': int(turno['esperado_en_caja'] * 100),
+        'supera_umbral': turno['esperado_en_caja'] > UMBRAL_RETIRO,
+        'umbral_retiro': UMBRAL_RETIRO,
+        'movimientos_sub': f"{n_registros} registro{'s' if n_registros != 1 else ''} · último {_hora(ultimo_en)}",
+        'ordenes_turno_sub': _resumen_pedidos_turno(caja),
+        'corte_fila': corte_fila,
+        'denominaciones': _denominaciones(),
+        'categorias': MovimientoCaja.CATEGORIAS,
+        'subheader': subheader,
+    })
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(['GET', 'POST'])
 def abrir_caja(request):
-    """Abrir caja del día"""
-    hoy = date.today()
-    
-    # Verificar si ya existe una caja abierta (cualquier fecha)
-    if CajaDiaria.objects.filter(estado='abierta').exists():
-        return JsonResponse({
-            'success': False,
-            'message': 'Ya existe una caja abierta. Debe cerrar la caja actual antes de abrir una nueva.'
-        })
-    
-    try:
-        # Obtener datos del formulario
-        monto_inicial_efectivo = float(request.POST.get('monto_inicial_efectivo', 0))
-        monto_inicial_transferencia = float(request.POST.get('monto_inicial_transferencia', 0))
-        observaciones = request.POST.get('observaciones', '')
-        
-        # Crear caja diaria
-        caja = CajaDiaria.objects.create(
-            fecha=hoy,
-            estado='abierta',
-            observaciones=observaciones
-        )
-        
-        # Crear caja efectivo
-        CajaEfectivo.objects.create(
-            caja_diaria=caja,
-            monto_inicial=monto_inicial_efectivo
-        )
-        
-        # Crear caja transferencia
-        CajaTransferencia.objects.create(
-            caja_diaria=caja,
-            monto_inicial=monto_inicial_transferencia
-        )
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Caja abierta exitosamente',
-            'caja_id': caja.id
-        })
-        
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': f'Error al abrir caja: {str(e)}'
+    if T.caja_abierta() is not None:
+        return redirect('dashboard_caja')
+
+    propuesto = T.fondo_propuesto()
+    error = ''
+    valor_campo = f'{propuesto:.2f}' if propuesto is not None else ''
+    if request.method == 'POST':
+        valor_campo = (request.POST.get('fondo_inicial') or '').strip()
+        fondo = _parse_monto(valor_campo, permitir_cero=True)
+        error = _mensaje_faltantes(campos_faltantes(fondo, etiqueta_monto='el fondo inicial'))
+        if not error:
+            with transaction.atomic():
+                if CajaDiaria.objects.select_for_update().filter(estado='abierta').exists():
+                    return redirect('dashboard_caja')
+                observaciones = ''
+                if propuesto is not None and fondo != propuesto:
+                    observaciones = (
+                        f'Fondo propuesto {_dinero(propuesto)}, abrió con {_dinero(fondo)} '
+                        f'(diferencia {"+" if fondo > propuesto else "−"}{_dinero(abs(fondo - propuesto))})'
+                    )
+                T.abrir(fondo, request.user, observaciones)
+            return redirect('dashboard_caja')
+
+    anterior = T.ultima_cerrada()
+    contexto_anterior = None
+    if anterior:
+        corte = _corte(anterior)
+        contexto_anterior = {
+            'fecha': _fecha_corta(anterior.fecha_cierre),
+            'cajero': _nombre_corto(anterior.cerrada_por),
+            'hora': _hora(anterior.fecha_cierre),
+            'diferencia': _texto_diferencia(corte),
+            'resultado': corte['resultado'],
+        }
+
+    ahora = timezone.now()
+    return render(request, 'pizzeria/caja/abrir.html', {
+        'cj': _cj(),
+        'valor_campo': valor_campo,
+        'propuesto': propuesto,
+        'atajos': [f'{a:.2f}' for a in ATAJOS_FONDO],
+        'error': error,
+        'anterior': contexto_anterior,
+        'cajero_nombre': _nombre_completo(request.user),
+        'cajero_rol': rol_de(request.user),
+        'turno_texto': f'{_fecha_corta(ahora)} · {_hora(ahora)}',
+        'subheader': _subheader(
+            'Abrir caja', sub_hi='Falta el fondo inicial', tono='rojo', sub_post=' para empezar a cobrar',
+            back=reverse('inicio'),
+        ),
+    })
+
+
+@login_required(login_url=LOGIN_URL)
+def movimientos_caja(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
+
+    filtro = request.GET.get('tipo', 'todos')
+    if filtro not in dict(FILTROS_MOVIMIENTOS):
+        filtro = 'todos'
+
+    esperado = T.resumen_turno(caja)['esperado_en_caja']
+    # Los anulados se siguen viendo (tachados): son la pista de cualquier descuadre.
+    movimientos = caja.movimientos.select_related('autor', 'anulado_por')
+    total = movimientos.count() + caja.gastos.count() + 1
+    if filtro != 'todos':
+        movimientos = movimientos.filter(tipo=filtro)
+    filas = []
+    for mov in movimientos:
+        fila = _fila_movimiento(mov, esperado)
+        fila['orden'] = mov.creado_en
+        filas.append(fila)
+
+    if filtro in ('todos', 'gasto'):
+        # Gastos del modelo anterior (cargados desde /admin/): solo lectura.
+        for gasto in caja.gastos.all():
+            filas.append({
+                'tipo': 'gasto',
+                'titulo': f'Gasto · {gasto.descripcion or gasto.get_categoria_display()}',
+                'sub': f'{_hora(gasto.fecha)} · cargado desde admin',
+                'monto': f'− {_dinero(gasto.monto)}',
+                'saldo': '',
+                'fecha': timezone.localtime(gasto.fecha).date(),
+                'orden': gasto.fecha,
+            })
+        filas.sort(key=lambda f: f['orden'], reverse=True)
+
+    if filtro == 'todos':
+        filas.append({
+            'tipo': 'apertura',
+            'titulo': 'Apertura de caja',
+            'sub': ' · '.join([_hora(caja.fecha_apertura)] + ([_nombre_corto(caja.abierta_por)] if caja.abierta_por else [])),
+            'monto': _dinero(T.fondo_inicial(caja)),
+            'saldo': 'fondo',
+            'fecha': timezone.localtime(caja.fecha_apertura).date(),
         })
 
-@csrf_exempt
-@solo_admin
-@require_http_methods(["POST"])
-def cerrar_caja(request):
-    """Cerrar caja del día"""
-    hoy = date.today()
-    
-    try:
-        # Obtener la caja abierta actual (cualquier fecha)
-        caja_abierta = CajaDiaria.objects.filter(estado='abierta').first()
-        
-        if not caja_abierta:
-            return JsonResponse({
-                'success': False,
-                'message': 'No hay caja abierta para cerrar'
-            })
-        
-        # Obtener datos del formulario
-        monto_final_efectivo_str = request.POST.get('monto_final_efectivo', '0')
-        monto_final_transferencia_str = request.POST.get('monto_final_transferencia', '0')
-        
-        # Convertir a float, manejando cadenas vacías
-        monto_final_efectivo = float(monto_final_efectivo_str) if monto_final_efectivo_str else 0
-        monto_final_transferencia = float(monto_final_transferencia_str) if monto_final_transferencia_str else 0
-        observaciones_cierre = request.POST.get('observaciones_cierre', '')
-        
-        # Calcular totales de ventas del día (SOLO PEDIDOS COMPLETADOS)
-        pedidos_caja = Pedido.objects.filter(
-            fecha_creacion__date=caja_abierta.fecha,
-            estado='completado'
+    grupos = []
+    for fila in filas:
+        if not grupos or grupos[-1]['fecha'] != fila['fecha']:
+            grupos.append({'fecha': fila['fecha'], 'titulo': _encabezado_dia(fila['fecha']), 'filas': []})
+        grupos[-1]['filas'].append(fila)
+
+    base = _cj(caja)['urls']['movimientos']
+    chips = [
+        {
+            'label': etiqueta, 'value': clave, 'active': clave == filtro,
+            'url': base if clave == 'todos' else f'{base}?tipo={clave}',
+            'count': total if clave == 'todos' else None,
+        }
+        for clave, etiqueta in FILTROS_MOVIMIENTOS
+    ]
+    if historico:
+        subheader = _subheader_historico(caja, 'Movimientos', _cj(caja)['urls']['estado'])
+        subheader['segunda'] = {'tipo': 'chips', 'chips': chips}
+    else:
+        subheader = _subheader(
+            'Movimientos', sub_pre='Turno de hoy · saldo ', sub_hi=_dinero(esperado),
+            back=reverse('dashboard_caja'), chips=chips,
         )
-        
-        # Calcular totales reales sumando los items de cada pedido
-        total_efectivo = 0
-        total_transferencia = 0
-        
-        for pedido in pedidos_caja:
-            efectivo, transferencia = pedido.montos_por_medio()
-            total_efectivo += efectivo
-            total_transferencia += transferencia
-        
-        # Actualizar caja efectivo
-        caja_efectivo = caja_abierta.caja_efectivo
-        caja_efectivo.monto_final = monto_final_efectivo
-        caja_efectivo.total_ventas = total_efectivo
-        caja_efectivo.save()
-        
-        # Actualizar caja transferencia
-        caja_transferencia = caja_abierta.caja_transferencia
-        caja_transferencia.monto_final = monto_final_transferencia
-        caja_transferencia.total_ventas = total_transferencia
-        caja_transferencia.save()
-        
-        # Cerrar caja
-        caja_abierta.estado = 'cerrada'
-        caja_abierta.fecha_cierre = timezone.now()
-        if observaciones_cierre:
-            caja_abierta.observaciones += f"\nCierre: {observaciones_cierre}"
-        caja_abierta.save()
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Caja cerrada exitosamente',
-            'resumen': {
-                'total_efectivo': total_efectivo,
-                'total_transferencia': total_transferencia,
-                'total_ventas': total_efectivo + total_transferencia
-            }
-        })
-        
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': f'Error al cerrar caja: {str(e)}'
-        })
+    return render(request, 'pizzeria/caja/movimientos.html', {
+        'cj': _cj(caja),
+        'grupos': grupos,
+        'filtro': filtro,
+        'caja': caja,
+        'motivos_anulacion': MOTIVOS_ANULACION,
+        'subheader': subheader,
+    })
+
+
+@login_required(login_url=LOGIN_URL)
+@solo_admin
+def cerrar_caja(request):
+    caja = T.caja_abierta()
+    if caja is None:
+        return redirect('abrir_caja')
+
+    turno = T.resumen_turno(caja)
+    pendientes = Pedido.objects.filter(estado='pendiente').count()
+    cajero = _nombre_corto(caja.abierta_por)
+    return render(request, 'pizzeria/caja/cerrar.html', {
+        'cj': _cj(),
+        'caja': caja,
+        'turno': turno,
+        'desglose': _desglose_cajon(turno),
+        'esperado_centavos': int(turno['esperado_en_caja'] * 100),
+        'denominaciones': _denominaciones(),
+        'aviso_pendientes': _aviso_pendientes(
+            pendientes, 'pedido sin entregar', 'pedidos sin entregar', ('entrega', 'entregan'),
+        ),
+        'cerrador_nombre': _nombre_completo(request.user),
+        'turno_texto': f"Abierto {_hora(caja.fecha_apertura)}" + (f' por {cajero}' if cajero else ''),
+        'subheader': _subheader(
+            'Cerrar caja', sub_pre='Cuenta el cajón · debe haber ', sub_hi=_dinero(turno['esperado_en_caja']),
+            back=reverse('dashboard_caja'),
+        ),
+    })
+
+
+@login_required(login_url=LOGIN_URL)
+def cortes_caja(request):
+    volver = reverse('dashboard_caja') if T.caja_abierta() else reverse('abrir_caja')
+    contexto = _contexto_cortes(
+        request, CajaDiaria, _corte, reverse('caja_cortes'),
+        lambda turno_id: reverse('caja_historico', args=[turno_id]), reverse('dashboard_caja'), volver,
+    )
+    return render(request, 'pizzeria/caja/cortes.html', {'cj': _cj(), **contexto})
+
+
+@login_required(login_url=LOGIN_URL)
+def pedidos_turno(request, turno_id=None):
+    caja, salida = _turno_pedido(turno_id)
+    if salida:
+        return salida
+    historico = caja.estado == 'cerrada'
+
+    filtro = request.GET.get('filtro', 'todas')
+    if filtro not in dict(FILTROS_PEDIDOS_TURNO):
+        filtro = 'todas'
+
+    todas = _pedidos_turno(caja)
+    conteos = {'todas': len(todas), 'mixtas': sum(1 for f in todas if f['metodo'] == 'Mixto')}
+    filas = [f for f in todas if f['metodo'] == 'Mixto'] if filtro == 'mixtas' else todas
+
+    subtotales = {}
+    grupos = []
+    for clave, etiqueta in GRUPOS_METODO:
+        del_grupo = [f for f in filas if f['metodo'] == clave]
+        subtotales[clave] = sum((f['total'] for f in del_grupo), Decimal('0.00'))
+        if del_grupo:
+            n = len(del_grupo)
+            grupos.append({
+                'clave': clave.lower(), 'etiqueta': etiqueta, 'filas': del_grupo,
+                'subtotal': subtotales[clave], 'conteo': f"{n} {_plural(n, 'pedido', 'pedidos')}",
+            })
+
+    base = _cj(caja)['urls']['ordenes']
+    chips = [
+        {
+            'label': etiqueta, 'active': clave == filtro, 'count': conteos[clave],
+            'url': base if clave == 'todas' else f'{base}?filtro={clave}',
+        }
+        for clave, etiqueta in FILTROS_PEDIDOS_TURNO
+        if clave == 'todas' or conteos[clave] or clave == filtro
+    ]
+
+    return render(request, 'pizzeria/caja/ordenes_turno.html', {
+        'cj': _cj(caja),
+        'caja': caja,
+        'grupos': grupos,
+        'filtro': filtro,
+        'efectivo_en_mixtas': sum((f['efectivo_en_mixta'] for f in filas), Decimal('0.00')),
+        'totales': [
+            {'etiqueta': etiqueta.capitalize(), 'monto': subtotales[clave]} for clave, etiqueta in GRUPOS_METODO
+        ],
+        'total_turno': sum(subtotales.values(), Decimal('0.00')),
+        'subtotales_centavos': '{}',
+        'metodos_corregibles': [],
+        'subheader': _subheader(
+            'Pedidos del turno',
+            sub_pre=f"{conteos['todas']} {_plural(conteos['todas'], 'pagado', 'pagados')} · ",
+            sub_hi=_dinero(sum((f['total'] for f in todas), Decimal('0.00'))),
+            sub_post=f' · {_fecha_corta(caja.fecha_apertura)}' if historico else '',
+            back=_cj(caja)['urls']['estado'],
+            chips=chips if len(chips) > 1 else None,
+        ),
+    })
+
+
+# ===== Acciones (POST JSON) =====
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(['POST'])
+def registrar_retiro(request):
+    data = _leer_json(request)
+    if data is None:
+        return _error('Datos inválidos')
+
+    conteo_limpio, total, error = _leer_conteo(data)
+    if error:
+        return _error(error)
+    if total <= 0:
+        return _error('Cuenta lo que vas a retirar')
+
+    with transaction.atomic():
+        caja = _caja_para_movimiento(data.get('turno_id'))
+        if caja is None:
+            return _error('Este turno ya está cerrado. Recarga la pantalla.', status=409)
+        esperado = T.resumen_turno(caja)['esperado_en_caja']
+        if total > esperado:
+            return _error('Estás retirando más de lo que hay en el cajón')
+        MovimientoCaja.objects.create(
+            caja=caja, tipo='retiro', monto=total, conteo=conteo_limpio,
+            detalle=(data.get('motivo') or '').strip()[:200], autor=request.user,
+            saldo_posterior=esperado - total,
+        )
+    return JsonResponse({'status': 'ok', 'message': f'Retiraste {_dinero(total)} a bóveda'})
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(['POST'])
+def registrar_movimiento(request):
+    data = _leer_json(request)
+    if data is None:
+        return _error('Datos inválidos')
+
+    tipo = data.get('tipo')
+    if tipo not in ('ingreso', 'gasto'):
+        return _error('Tipo de movimiento inválido')
+    categoria = data.get('categoria') or ''
+    if categoria and categoria not in dict(MovimientoCaja.CATEGORIAS):
+        return _error('Categoría inválida')
+    monto = _parse_monto(data.get('monto'))
+    faltan = campos_faltantes(monto, categoria, pide_categoria=True)
+    if faltan:
+        return _error(_mensaje_faltantes(faltan))
+
+    with transaction.atomic():
+        caja = _caja_para_movimiento(data.get('turno_id'))
+        if caja is None:
+            return _error('Este turno ya está cerrado. Recarga la pantalla.', status=409)
+        esperado = T.resumen_turno(caja)['esperado_en_caja']
+        saldo = esperado + monto if tipo == 'ingreso' else esperado - monto
+        if saldo < 0:
+            return _error('El gasto deja el cajón en negativo')
+        MovimientoCaja.objects.create(
+            caja=caja, tipo=tipo, monto=monto, categoria=categoria,
+            detalle=(data.get('detalle') or '').strip()[:200], autor=request.user, saldo_posterior=saldo,
+        )
+    etiqueta = 'Gasto' if tipo == 'gasto' else 'Ingreso'
+    return JsonResponse({'status': 'ok', 'message': f'{etiqueta} de {_dinero(monto)} registrado'})
+
+
+@login_required(login_url=LOGIN_URL)
+@solo_admin
+@require_http_methods(['POST'])
+def registrar_cierre(request):
+    """Arqueo final. Diferencia = contado − esperado; si no cuadra, se exige motivo."""
+    data = _leer_json(request)
+    if data is None:
+        return _error('Datos inválidos')
+
+    conteo_limpio, contado, error = _leer_conteo(data)
+    if error:
+        return _error(error)
+    motivo = (data.get('motivo') or '').strip()[:200]
+
+    with transaction.atomic():
+        caja = _caja_para_movimiento(data.get('turno_id'))
+        if caja is None:
+            return _error('Este turno ya está cerrado. Recarga la pantalla.', status=409)
+        turno = T.resumen_turno(caja)
+        esperado = turno['esperado_en_caja']
+        # El cajero contó contra la cifra que veía; si entró un cobro o un movimiento
+        # mientras contaba, la comparación ya no vale.
+        if data.get('esperado_centavos') != int(esperado * 100):
+            return _error('Cambió lo que debe haber en el cajón mientras contabas. Recarga y revisa.', status=409)
+        diferencia = contado - esperado
+        if diferencia != 0 and not motivo:
+            return _error('Falta el motivo de la diferencia')
+
+        efectivo = T.efectivo_de(caja) or CajaEfectivo(caja_diaria=caja, monto_inicial=Decimal('0.00'))
+        efectivo.monto_final = contado
+        efectivo.save()
+        transferencia = CajaTransferencia.objects.filter(caja_diaria=caja).first()
+        if transferencia:
+            transferencia.monto_final = turno['ventas_transferencia']
+            transferencia.save()
+
+        caja.estado = 'cerrada'
+        caja.fecha_cierre = timezone.now()
+        caja.cerrada_por = request.user
+        caja.conteo_cierre = conteo_limpio
+        if motivo:
+            # _motivo_cierre lee el texto que sigue a "Cierre:".
+            caja.observaciones = f'{caja.observaciones}\nCierre: {motivo}'.strip()
+        caja.save()
+
+    if diferencia == 0:
+        mensaje = 'Caja cerrada · cuadró'
+    else:
+        tipo = 'faltante' if diferencia < 0 else 'sobrante'
+        mensaje = f'Caja cerrada con {tipo} de {_dinero(abs(diferencia))}'
+    return JsonResponse({'status': 'ok', 'message': mensaje, 'redirect': reverse('abrir_caja')})
+
+
+@login_required(login_url=LOGIN_URL)
+@solo_admin
+@require_http_methods(['POST'])
+def anular_movimiento(request, movimiento_id):
+    data = _leer_json(request)
+    if data is None:
+        return _error('Datos inválidos')
+    motivo = (data.get('motivo') or '').strip()[:200]
+    if not motivo:
+        return _error('Falta el motivo')
+
+    with transaction.atomic():
+        caja = _caja_para_movimiento(data.get('turno_id'))
+        if caja is None:
+            return _error('Este turno ya está cerrado. Recarga la pantalla.', status=409)
+        mov = caja.movimientos.select_for_update().filter(pk=movimiento_id).first()
+        if mov is None:
+            return _error('Movimiento no encontrado', status=404)
+        if mov.anulado:
+            return _error('Este movimiento ya estaba anulado', status=409)
+        esperado = T.resumen_turno(caja)['esperado_en_caja']
+        if _esperado_si_se_anula(mov, esperado) < 0:
+            return _error('Anularlo deja el cajón en negativo')
+        mov.anulado = True
+        mov.anulado_motivo = motivo
+        mov.anulado_por = request.user
+        mov.anulado_en = timezone.now()
+        mov.save(update_fields=['anulado', 'anulado_motivo', 'anulado_por', 'anulado_en'])
+
+    return JsonResponse({'status': 'ok', 'message': f'{NOMBRE_TIPO[mov.tipo].capitalize()} de {_dinero(mov.monto)} anulado'})

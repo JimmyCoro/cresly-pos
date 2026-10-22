@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -14,6 +15,13 @@ class CajaDiaria(models.Model):
     fecha_apertura = models.DateTimeField(auto_now_add=True)
     fecha_cierre = models.DateTimeField(null=True, blank=True)
     observaciones = models.TextField(blank=True)
+    abierta_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='cajas_almuerzos_abiertas',
+    )
+    cerrada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='cajas_almuerzos_cerradas',
+    )
+    conteo_cierre = models.JSONField(null=True, blank=True, help_text='Arqueo final: cantidad por denominación.')
 
     class Meta:
         verbose_name = 'Caja Diaria'
@@ -83,3 +91,48 @@ class Gasto(models.Model):
     def __str__(self):
         return f"{self.descripcion} - ${self.monto}"
 
+
+class MovimientoCaja(models.Model):
+    """Dinero que entra o sale del cajón de Almuerzos fuera de la venta. Mismo
+    esquema que pizzeria.MovimientoCajaPizzeria: las pantallas de caja son
+    las mismas para los dos módulos. La apertura no se guarda aquí: sale del
+    fondo inicial (CajaEfectivo.monto_inicial)."""
+    TIPOS = [
+        ('retiro', 'Retiro a bóveda'),
+        ('ingreso', 'Ingreso'),
+        ('gasto', 'Gasto'),
+    ]
+    CATEGORIAS = [
+        ('insumos', 'Insumos'),
+        ('transporte', 'Transporte'),
+        ('mantenimiento', 'Mantenimiento'),
+        ('servicios', 'Servicios'),
+        ('otro', 'Otro'),
+    ]
+
+    caja = models.ForeignKey(CajaDiaria, on_delete=models.CASCADE, related_name='movimientos')
+    tipo = models.CharField(max_length=10, choices=TIPOS)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    categoria = models.CharField(max_length=20, choices=CATEGORIAS, blank=True)
+    detalle = models.CharField(max_length=200, blank=True)
+    conteo = models.JSONField(null=True, blank=True, help_text='Retiros: cantidad por denominación.')
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    saldo_posterior = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text='Lo que debía quedar en el cajón justo después; se guarda al registrar, no se recalcula.',
+    )
+    anulado = models.BooleanField(default=False)
+    anulado_motivo = models.CharField(max_length=200, blank=True)
+    anulado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    anulado_en = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Movimiento de caja almuerzos'
+        verbose_name_plural = 'Movimientos de caja almuerzos'
+        ordering = ['-creado_en', '-id']
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} ${self.monto} - {self.caja}"

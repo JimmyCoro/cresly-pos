@@ -37,6 +37,9 @@ class Pedido( models.Model):
     # siempre total - monto_efectivo (ver montos_por_medio), así el reparto
     # nunca queda descuadrado cuando cambia el total.
     monto_efectivo = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    # Cuándo se entregó/cobró. La caja atribuye el pedido al turno por esta
+    # hora (no por cuándo se tomó); los pedidos viejos usan fecha_creacion.
+    completado_en = models.DateTimeField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.tipo} - {self.forma_pago} - {self.fecha} - {self.estado}"

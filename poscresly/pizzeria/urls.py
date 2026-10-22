@@ -58,6 +58,10 @@ urlpatterns = [
     path('caja/turno/ordenes/', views_caja.ordenes_turno, name='pizzeria_caja_ordenes_turno'),
     path('caja/turno/ordenes/<int:pedido_id>/metodo/', views_caja.corregir_metodo_pago, name='pizzeria_caja_corregir_metodo'),
     path('caja/turno/cortes/', views_caja.cortes_caja, name='pizzeria_caja_cortes'),
+    # Un turno anterior, de solo lectura (se entra desde Cortes anteriores).
+    path('caja/turno/<int:turno_id>/', views_caja.estado_caja, name='pizzeria_caja_historico'),
+    path('caja/turno/<int:turno_id>/ordenes/', views_caja.ordenes_turno, name='pizzeria_caja_historico_ordenes'),
+    path('caja/turno/<int:turno_id>/movimientos/', views_caja.movimientos_caja, name='pizzeria_caja_historico_movimientos'),
     path('caja/turno/retiro/', views_caja.registrar_retiro, name='pizzeria_caja_retiro'),
     path('caja/turno/movimiento/', views_caja.registrar_movimiento, name='pizzeria_caja_movimiento'),
     path('caja/turno/movimiento/<int:movimiento_id>/anular/', views_caja.anular_movimiento, name='pizzeria_caja_anular_movimiento'),
