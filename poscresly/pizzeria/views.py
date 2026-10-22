@@ -793,6 +793,8 @@ def _tarjeta_orden(pedido):
     adelantado = pedido.pagado_por_adelantado
     return {
         'pedido': pedido,
+        # Hora en que se tomó la orden (solo hora, sin fecha).
+        'hora': timezone.localtime(pedido.fecha_creacion).strftime('%H:%M'),
         'adelantado': adelantado,
         # forma_pago queda vacía cuando se pagó con varios métodos.
         'metodo_pago': (
@@ -2313,7 +2315,14 @@ def nueva_orden(request):
     else:
         breadcrumbs = [{'label': 'Punto de venta', 'url': None}]
         numero_str = f'{proximo_numero:03d}'
-        tipo_actual = 'mesa' if mesa_preseleccionada_id else 'llevar'
+        # Modo por punto de entrada (handoff_barra_orden §6): desde Mesas
+        # llega con mesa → Servirse; ?tipo=delivery → Delivery; ＋ → Llevar.
+        if mesa_preseleccionada_id:
+            tipo_actual = 'mesa'
+        elif request.GET.get('tipo') == 'delivery':
+            tipo_actual = 'delivery'
+        else:
+            tipo_actual = 'llevar'
         mesa_asignada = mesa_preseleccionada_obj
         contacto_actual = None
         telefono_actual = ''
@@ -2321,9 +2330,23 @@ def nueva_orden(request):
 
     # El "recibo" del subheader: quién y dónde va la orden (mesa/cliente/
     # teléfono+envío), no el mesero. Se resuelve una vez aquí para el primer
-    # render; en la pantalla de "nueva orden" la hoja de modo lo actualiza
-    # en vivo vía JS (ver actualizarResumenSubheader en pizzeria_venta_rapida.js).
-    if tipo_actual == 'mesa':
+    # render; en la pantalla de "nueva orden" la barra de orden lo actualiza
+    # en vivo vía JS (ver renderSubheader en pizzeria_venta_rapida.js).
+    tipo_labels_ui = {'mesa': 'Servirse', 'llevar': 'Llevar', 'delivery': 'Delivery'}
+    if not pedido_abierto:
+        # Orden nueva (handoff_barra_orden §3): "#006 · Llevar · " + lo
+        # pendiente en rojo, o la mesa, o "0 productos" mientras está vacía.
+        sub_pre = f'#{numero_str} · {tipo_labels_ui[tipo_actual]} · '
+        sub_post = ''
+        if tipo_actual == 'mesa' and mesa_asignada:
+            sub_hi, sub_hi_tono = f'Mesa {mesa_asignada.nombre or mesa_asignada.numero}', 'neutro'
+        elif tipo_actual == 'mesa':
+            sub_hi, sub_hi_tono = 'falta mesa', 'rojo'
+        elif tipo_actual == 'delivery':
+            sub_hi, sub_hi_tono = 'falta teléfono', 'rojo'
+        else:
+            sub_hi, sub_hi_tono = '0 productos', 'neutro'
+    elif tipo_actual == 'mesa':
         sub_pre = f'#{numero_str} · '
         if mesa_asignada:
             sub_hi, sub_hi_tono = f'Mesa {mesa_asignada.nombre or mesa_asignada.numero}', 'verde'
@@ -2342,14 +2365,15 @@ def nueva_orden(request):
             sub_hi, sub_hi_tono = 'Falta envío', 'rojo'
         sub_post = ''
 
-    tipo_labels_ui = {'mesa': 'Servirse', 'llevar': 'Llevar', 'delivery': 'Delivery'}
     subheader = {
         'titulo': 'Agregar a pedido' if pedido_abierto else 'Nueva orden',
+        # En una orden nueva el modo ya va en la sub-línea y en la barra de
+        # orden; el pill solo queda al agregar a un pedido existente.
         'pill': {
             'id': 'pzshTipoPedido',
             'texto': tipo_labels_ui[tipo_actual],
             'tono': 'delivery' if tipo_actual == 'delivery' else 'oscuro',
-        },
+        } if pedido_abierto else None,
         'sub_id': 'pzshResumen',
         'sub_pre': sub_pre,
         'sub_hi': sub_hi,
@@ -2367,6 +2391,40 @@ def nueva_orden(request):
         'subheader': subheader,
         'numero_str': numero_str,
         'mesero_nombre': mesero_nombre,
+        'tipo_inicial': tipo_actual,
+        'valores_moto': ['2.00', '2.25', '2.50', '2.75', '3.00', '3.25', '3.50'],
+    })
+
+
+def _solo_digitos(texto):
+    return re.sub(r'\D', '', texto or '')
+
+
+@login_required(login_url=LOGIN_URL)
+def buscar_cliente_pizzeria(request):
+    """Cliente conocido por teléfono (handoff_barra_orden §4): el último
+    delivery con ese número da el nombre y la dirección. No hay tabla de
+    clientes: el teléfono va al inicio de `contacto` ("tel - nombre") y la
+    dirección en `observaciones`."""
+    tel = _solo_digitos(request.GET.get('tel'))
+    if len(tel) < 7:
+        return JsonResponse({'encontrado': False})
+    pedidos = [
+        p for p in PedidoPizzeria.objects.filter(tipo='delivery')
+        .exclude(contacto__isnull=True).exclude(contacto='')
+        .order_by('-fecha_creacion')
+        .only('contacto', 'observaciones', 'fecha_creacion')[:500]
+        if _solo_digitos(p.contacto.partition(' - ')[0]) == tel
+    ]
+    if not pedidos:
+        return JsonResponse({'encontrado': False})
+    ultimo = pedidos[0]
+    nombre = next((p.contacto.partition(' - ')[2].strip() for p in pedidos if p.contacto.partition(' - ')[2].strip()), '')
+    return JsonResponse({
+        'encontrado': True,
+        'nombre': nombre,
+        'direccion': ' '.join((ultimo.observaciones or '').split()),
+        'pedidos': len(pedidos),
     })
 
 
@@ -2508,6 +2566,19 @@ def guardar_pedido_pizzeria(request):
                 return JsonResponse({'status': 'error', 'message': 'Selecciona el número de mesa'}, status=400)
             if tipo == 'delivery' and not telefono:
                 return JsonResponse({'status': 'error', 'message': 'Ingresa el teléfono del cliente'}, status=400)
+            # Nueva orden (barra de orden): delivery exige también dirección,
+            # pago y moto. La toma de pedido de tablet manda `contacto` y no
+            # pide estos datos, así que se deja como estaba.
+            if tipo == 'delivery' and not contacto_directo:
+                faltan = [
+                    etiqueta for etiqueta, valor in (
+                        ('la dirección', observaciones.strip()),
+                        ('la forma de pago', pago_delivery),
+                        ('el valor de la moto', valor_moto_raw),
+                    ) if not valor
+                ]
+                if faltan:
+                    return JsonResponse({'status': 'error', 'message': 'Falta ' + ', '.join(faltan)}, status=400)
 
         if contacto_directo:
             # Compatibilidad con el flujo de toma de pedido desde tablet/móvil,
@@ -3190,6 +3261,13 @@ def obtener_pedidos_abiertos_pizzeria(request):
         estado='abierto'
     ).select_related('mesa', 'mesero')
     return JsonResponse({'status': 'ok', 'pedidos': [_serializar_pedido(p) for p in pedidos]})
+
+
+@login_required(login_url=LOGIN_URL)
+def contar_pedidos_abiertos_pizzeria(request):
+    """Solo el número, para el badge de Órdenes de la barra inferior
+    (mismo filtro que context_processors.bottom_nav)."""
+    return JsonResponse({'abiertos': PedidoPizzeria.objects.filter(estado='abierto').count()})
 
 
 # ===== CAJA PIZZERÍA =====

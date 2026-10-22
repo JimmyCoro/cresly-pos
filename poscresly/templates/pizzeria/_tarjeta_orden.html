@@ -10,6 +10,7 @@
     <span class="or-card-main">
       <span class="or-card-titulo-fila">
         <span class="or-card-titulo">{{ tarjeta.titulo }}</span>
+        <time class="or-card-hora" datetime="{{ pedido.fecha_creacion|date:'c' }}" title="Hora en que se tomó la orden"><i class="bi bi-clock" aria-hidden="true"></i>{{ tarjeta.hora }}</time>
         {% if tarjeta.adelantado %}<span class="or-card-pagado">Pagado por adelantado</span>{% endif %}
       </span>
       {% for dato in tarjeta.cliente %}

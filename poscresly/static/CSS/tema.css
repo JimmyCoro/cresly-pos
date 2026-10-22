@@ -1,0 +1,41 @@
+/* Modo oscuro global. La app tiene cientos de colores fijos repartidos en
+   cada hoja de estilos, así que en vez de una paleta por pantalla se
+   invierte la página entera y se le devuelve el tono con hue-rotate (el
+   rojo y el verde de marca siguen siendo rojo y verde).
+   Lo que no debe invertirse (fotos, logo, gráficos y el sidebar, que ya es
+   oscuro) se vuelve a invertir para quedar como estaba. */
+html[data-theme="dark"] {
+  background: #fff;
+  filter: invert(0.9) hue-rotate(180deg);
+  color-scheme: light; /* los controles nativos se invierten con el resto */
+}
+
+/* El rojo de marca invertido sale rosado. Estos valores están calculados
+   para que, después del filtro, se vean como un rojo ladrillo (#bf5840).
+   Son las variables de rojo que define cada pantalla de Pizzería; en
+   Almuerzos body.almuerzos-page sigue pisando --primary-color con el verde. */
+html[data-theme="dark"] {
+  --primary-color: #ff7e60;
+  --primary-color-hover: #ff9a80;
+}
+html[data-theme="dark"] * {
+  --pzm-brand: #ff7e60;
+  --or-brand: #ff7e60;
+  --do-brand: #ff7e60;
+  --cmb-brand: #ff7e60;
+  --cj-brand: #ff7e60;
+  --im-brand: #ff7e60;
+  --alm-red: #ff7e60;
+}
+
+html[data-theme="dark"] img,
+html[data-theme="dark"] video,
+html[data-theme="dark"] canvas,
+html[data-theme="dark"] .sidebar {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Dentro del sidebar ya re-invertido, el logo no necesita otra vuelta. */
+html[data-theme="dark"] .sidebar img {
+  filter: none;
+}

@@ -7,12 +7,6 @@
   let categoriaActiva = 'Todas';
   let busqueda = '';
 
-  function actualizarNumeroOrden(numero) {
-    const numeroStr = String(numero).padStart(3, '0');
-    document.getElementById('vrNumeroOrden').textContent = '#' + numeroStr;
-    window.PZ_NUMERO_STR = numeroStr;
-  }
-
   function productoPorcionIndividual() {
     return catalogo.productos.find(p => p.es_porcion_individual);
   }
@@ -352,6 +346,14 @@
     return { nombre, mods };
   }
 
+  function totalProductos() {
+    return carrito.reduce((suma, item) => suma + item._precio_unitario * item.cantidad, 0);
+  }
+
+  function cantidadItems() {
+    return carrito.reduce((suma, item) => suma + item.cantidad, 0);
+  }
+
   function renderCarrito() {
     const cont = document.getElementById('vrCartItems');
 
@@ -359,52 +361,38 @@
       cont.innerHTML = `
         <div class="vr-cart-empty">
           <div class="vr-cart-empty-icon"><i class="fas fa-cart-shopping"></i></div>
-          <p class="vr-cart-empty-title">Tu orden está vacía</p>
-          <p class="vr-cart-empty-subtitle">Toca un platillo para empezar a armarla.</p>
+          <p class="vr-cart-empty-title">Agrega productos</p>
+          <p class="vr-cart-empty-subtitle">Toca un platillo del menú para empezar la orden.</p>
         </div>`;
-      actualizarTotales(0);
-      actualizarBotonesConfirmar();
-      return;
+    } else {
+      cont.innerHTML = carrito.map((item, idx) => {
+        const subtotal = item._precio_unitario * item.cantidad;
+        const { nombre, mods } = separarNombreMod(item._label);
+        return `
+          <div class="vr-cart-item">
+            <div class="vr-cart-item-top">
+              <div class="vr-cart-item-info">
+                <span class="vr-cart-item-nombre">${escapeHtml(nombre)}</span>
+                ${mods ? `<span class="vr-cart-item-mods">${escapeHtml(mods)}</span>` : ''}
+              </div>
+              <span class="vr-cart-item-precio">$${subtotal.toFixed(2)}</span>
+            </div>
+            ${item.observacion ? `<div class="vr-cart-item-nota"><i class="fas fa-note-sticky me-1"></i>${escapeHtml(item.observacion)}</div>` : ''}
+            <div class="vr-cart-item-bottom">
+              <button type="button" class="vr-cart-item-editar" onclick="vrEditarNotaCarrito(${idx})">
+                <i class="fas fa-pencil"></i> Editar
+              </button>
+              <div class="vr-cart-item-stepper">
+                <button type="button" class="vr-cart-item-step" onclick="vrCambiarCantidadCarrito(${idx}, -1)">-</button>
+                <span class="vr-cart-item-qty">${item.cantidad}</span>
+                <button type="button" class="vr-cart-item-step vr-cart-item-step-plus" onclick="vrCambiarCantidadCarrito(${idx}, 1)">+</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
     }
 
-    let total = 0;
-    cont.innerHTML = carrito.map((item, idx) => {
-      const subtotal = item._precio_unitario * item.cantidad;
-      total += subtotal;
-      const { nombre, mods } = separarNombreMod(item._label);
-      return `
-        <div class="vr-cart-item">
-          <div class="vr-cart-item-top">
-            <div class="vr-cart-item-info">
-              <span class="vr-cart-item-nombre">${escapeHtml(nombre)}</span>
-              ${mods ? `<span class="vr-cart-item-mods">${escapeHtml(mods)}</span>` : ''}
-            </div>
-            <span class="vr-cart-item-precio">$${subtotal.toFixed(2)}</span>
-          </div>
-          ${item.observacion ? `<div class="vr-cart-item-nota"><i class="fas fa-note-sticky me-1"></i>${escapeHtml(item.observacion)}</div>` : ''}
-          <div class="vr-cart-item-bottom">
-            <button type="button" class="vr-cart-item-editar" onclick="vrEditarNotaCarrito(${idx})">
-              <i class="fas fa-pencil"></i> Editar
-            </button>
-            <div class="vr-cart-item-stepper">
-              <button type="button" class="vr-cart-item-step" onclick="vrCambiarCantidadCarrito(${idx}, -1)">-</button>
-              <span class="vr-cart-item-qty">${item.cantidad}</span>
-              <button type="button" class="vr-cart-item-step vr-cart-item-step-plus" onclick="vrCambiarCantidadCarrito(${idx}, 1)">+</button>
-            </div>
-          </div>
-        </div>`;
-    }).join('');
-
-    actualizarTotales(total);
-    actualizarBotonesConfirmar();
-  }
-
-  function actualizarTotales(total) {
-    const subtotal = total / (1 + IVA_RATE);
-    const iva = total - subtotal;
-    document.getElementById('vrSubtotal').textContent = `$${subtotal.toFixed(2)}`;
-    document.getElementById('vrIva').textContent = `$${iva.toFixed(2)}`;
-    document.getElementById('vrTotal').textContent = `$${total.toFixed(2)}`;
+    actualizarOrden();
   }
 
   window.vrCambiarCantidadCarrito = function (idx, delta) {
@@ -429,27 +417,314 @@
     return div.innerHTML;
   }
 
-  document.getElementById('vrVaciar').addEventListener('click', function () {
+  function vaciarPedido() {
     if (!carrito.length) return;
-    if (confirm('¿Vaciar el carrito?')) {
-      carrito.length = 0;
-      renderCarrito();
+    if (!confirm('¿Vaciar el pedido?')) return;
+    carrito.length = 0;
+    renderCarrito();
+    renderGrid(); // los steppers de las cards vuelven a "+"
+  }
+
+  document.getElementById('vrVaciar').addEventListener('click', vaciarPedido);
+
+  // ===== ESTADO DE LA ORDEN (handoff_barra_orden §7) =====
+  // Una sola regla, camposFaltantes(), decide todo lo demás: el borde rojo
+  // de la barra, la sub-línea del subheader, la tarjeta de entrega y el
+  // texto de los botones. No repetir validaciones en otro lado.
+  const $ = (id) => document.getElementById(id);
+  const TIPO_LABELS_UI = { mesa: 'Servirse', llevar: 'Llevar', delivery: 'Delivery' };
+  const FALTA_CORTO = { mesa: 'mesa', telefono: 'teléfono', direccion: 'dirección', pago: 'pago', moto: 'moto' };
+  const FALTA_LARGO = { mesa: 'mesa', telefono: 'teléfono', direccion: 'dirección', pago: 'forma de pago', moto: 'valor de la moto' };
+  const PAGO_LABELS = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
+  const CAMPO_NOMBRE = { mesa: 'vrNombreMesa', llevar: 'vrNombreLlevar', delivery: 'vrNombreDelivery' };
+
+  let tipoVenta = window.PZ_TIPO_INICIAL || 'llevar';
+  // La barra se ve "pendiente" (borde rojo) hasta que se revisan los datos
+  // una vez, aunque el modo no pida nada obligatorio (estado "vacía").
+  let datosTocados = false;
+  let pagoDelivery = null;
+  let guardandoPedido = false;
+
+  function esMovil() { return window.innerWidth <= 1023; }
+
+  function nombreCliente() {
+    const input = $(CAMPO_NOMBRE[tipoVenta]);
+    return input ? input.value.trim() : '';
+  }
+
+  function telefono() { return $('vrTelefonoDelivery').value.trim(); }
+  function direccion() { return $('vrNotasDelivery').value.trim().replace(/\s+/g, ' '); }
+
+  function motoTexto() { return $('vrValorMoto').value.trim(); }
+
+  function valorMoto() {
+    if (tipoVenta !== 'delivery') return 0;
+    const v = parseFloat(motoTexto());
+    return isNaN(v) ? 0 : v;
+  }
+
+  function camposFaltantes() {
+    if (PEDIDO_ID) return [];
+    if (tipoVenta === 'mesa') return mesaSeleccionada() ? [] : ['mesa'];
+    if (tipoVenta === 'delivery') {
+      const faltan = [];
+      if (!telefono()) faltan.push('telefono');
+      if (!direccion()) faltan.push('direccion');
+      if (!pagoDelivery) faltan.push('pago');
+      if (motoTexto() === '' || isNaN(parseFloat(motoTexto()))) faltan.push('moto');
+      return faltan;
     }
+    return []; // Llevar: sin nombre se imprime como "Llevar #006".
+  }
+
+  // "agregar" | "completar" | "confirmar": qué le toca hacer al cajero.
+  function siguientePaso() {
+    if (!carrito.length) return 'agregar';
+    if (camposFaltantes().length) return 'completar';
+    return 'confirmar';
+  }
+
+  function enLista(claves, etiquetas) {
+    const textos = claves.map(k => etiquetas[k]);
+    if (textos.length <= 1) return textos.join('');
+    return textos.slice(0, -1).join(', ') + ' y ' + textos[textos.length - 1];
+  }
+
+  function capitalizar(texto) { return texto.charAt(0).toUpperCase() + texto.slice(1); }
+  function dinero(valor) { return '$' + valor.toFixed(2); }
+  function plural(n, uno, varios) { return n === 1 ? uno : varios; }
+  function numeroOrden() { return window.PZ_NUMERO_STR || ''; }
+
+  function actualizarOrden() {
+    renderTotales();
+    renderBarra();
+    renderSubheader();
+    renderEntrega();
+    renderBotonPedido();
+    renderBotonDatos();
+  }
+
+  function renderTotales() {
+    const productos = totalProductos();
+    const subtotal = productos / (1 + IVA_RATE);
+    const moto = valorMoto();
+    $('vrSubtotal').textContent = dinero(subtotal);
+    $('vrIva').textContent = dinero(productos - subtotal);
+    $('vrMotoFila').hidden = !(tipoVenta === 'delivery' && moto > 0);
+    $('vrMoto').textContent = dinero(moto);
+    $('vrTotal').textContent = dinero(productos + moto);
+    const n = cantidadItems();
+    $('vrCartConteo').textContent = `${n} ${plural(n, 'item', 'items')}`;
+  }
+
+  // ===== BARRA DE ORDEN (§3) =====
+  let itemsAnteriores = null;
+
+  function renderBarra() {
+    const n = cantidadItems();
+    const num = $('vrBarraPedidoNum');
+    num.textContent = `${n} ${plural(n, 'item', 'items')}`;
+    $('vrBarraPedidoTotal').textContent = dinero(totalProductos() + valorMoto());
+    $('vrBarraPedido').classList.toggle('vr-bo-pedido-activo', n > 0);
+    if (itemsAnteriores !== null && itemsAnteriores !== n) {
+      // Animación corta del número al agregar o quitar.
+      num.classList.remove('vr-bo-pulso');
+      void num.offsetWidth;
+      num.classList.add('vr-bo-pulso');
+    }
+    itemsAnteriores = n;
+
+    if (PEDIDO_ID) return; // al agregar a un pedido, la izquierda la pinta el servidor
+
+    const faltan = camposFaltantes();
+    const nombre = nombreCliente();
+    const mesa = mesaSeleccionada();
+    let titulo;
+    if (tipoVenta === 'mesa') {
+      titulo = mesa ? `Mesa ${mesa.nombre || mesa.numero}${nombre ? ' · ' + nombre : ''}` : 'Servirse · sin mesa';
+    } else if (tipoVenta === 'delivery') {
+      titulo = `Delivery · ${nombre || telefono() || 'sin cliente'}`;
+    } else {
+      titulo = `Llevar · ${nombre || 'sin cliente'}`;
+    }
+
+    let sub;
+    if (faltan.length) {
+      sub = `Falta: ${enLista(faltan, FALTA_CORTO)}`;
+    } else if (!datosTocados) {
+      sub = 'Toca para modo y datos';
+    } else if (tipoVenta === 'mesa') {
+      sub = `Servirse · ${personasSeleccionadas} ${plural(personasSeleccionadas, 'persona', 'personas')}`;
+    } else if (tipoVenta === 'delivery') {
+      sub = `${direccion()} · moto ${dinero(valorMoto())}`;
+    } else {
+      sub = nombre ? 'Toca para cambiar modo o datos' : `Se imprime como Llevar #${numeroOrden()}`;
+    }
+
+    $('vrBarraDatosTitulo').textContent = titulo;
+    const subEl = $('vrBarraDatosSub');
+    subEl.textContent = sub;
+    subEl.classList.toggle('vr-bo-sub-aviso', faltan.length > 0);
+    $('vrBarraDatos').classList.toggle('vr-bo-pendiente', faltan.length > 0 || !datosTocados);
+  }
+
+  // ===== SUBHEADER (§3: "#006 · Llevar · " + resaltado) =====
+  function renderSubheader() {
+    // Al agregar a un pedido ya abierto, el resumen del servidor es el correcto.
+    if (PEDIDO_ID) return;
+    const el = $('pzshResumen');
+    if (!el) return;
+    const faltan = camposFaltantes();
+    const mesa = mesaSeleccionada();
+    const nombre = nombreCliente();
+    const n = cantidadItems();
+    let hi;
+    let tono = 'neutro';
+    if (faltan.length) {
+      hi = `falta ${FALTA_CORTO[faltan[0]]}`;
+      tono = 'rojo';
+    } else if (tipoVenta === 'mesa' && mesa) {
+      hi = `Mesa ${mesa.nombre || mesa.numero}`;
+    } else if (nombre) {
+      hi = nombre;
+    } else {
+      hi = `${n} ${plural(n, 'producto', 'productos')}`;
+    }
+    el.innerHTML = `#${escapeHtml(numeroOrden())} · ${TIPO_LABELS_UI[tipoVenta]} · `
+      + `<strong class="pzsh-hl-${tono}">${escapeHtml(hi)}</strong>`;
+  }
+
+  // ===== TARJETA DE ENTREGA en la hoja Pedido (§5) =====
+  function renderEntrega() {
+    const el = $('vrEntrega');
+    if (!el) return;
+    const faltan = camposFaltantes();
+    const etiqueta = TIPO_LABELS_UI[tipoVenta].toUpperCase();
+
+    if (faltan.length) {
+      el.className = 'vr-entrega vr-entrega-falta';
+      el.innerHTML = `
+        <button type="button" class="vr-entrega-toque" data-abrir-datos>
+          <span class="vr-entrega-textos">
+            <span class="vr-entrega-etiqueta">${etiqueta} · FALTAN DATOS</span>
+            <span class="vr-entrega-principal">${escapeHtml(capitalizar(enLista(faltan, FALTA_LARGO)))}</span>
+            <span class="vr-entrega-linea">Toca para completar</span>
+          </span>
+          <span class="vr-entrega-chevron" aria-hidden="true">›</span>
+        </button>`;
+      return;
+    }
+
+    const nombre = nombreCliente();
+    const lineas = [];
+    let principal;
+    if (tipoVenta === 'mesa') {
+      const mesa = mesaSeleccionada();
+      principal = `Mesa ${mesa.nombre || mesa.numero} · ${personasSeleccionadas} ${plural(personasSeleccionadas, 'persona', 'personas')}`;
+      if (nombre) lineas.push({ texto: nombre });
+    } else if (tipoVenta === 'delivery') {
+      principal = `${nombre || 'Cliente'} · ${telefono()}`;
+      lineas.push({ texto: direccion(), recorte: true });
+      lineas.push({ texto: `${PAGO_LABELS[pagoDelivery]} · moto ${dinero(valorMoto())}`, fuerte: true });
+    } else {
+      principal = nombre || 'Sin nombre';
+      if (!nombre) lineas.push({ texto: `Se imprime como Llevar #${numeroOrden()}` });
+    }
+
+    el.className = 'vr-entrega';
+    el.innerHTML = `
+      <div class="vr-entrega-textos">
+        <span class="vr-entrega-etiqueta">${etiqueta}</span>
+        <span class="vr-entrega-principal">${escapeHtml(principal)}</span>
+        ${lineas.map(l => `<span class="vr-entrega-linea${l.recorte ? ' vr-entrega-linea-recorte' : ''}${l.fuerte ? ' vr-entrega-linea-fuerte' : ''}">${escapeHtml(l.texto)}</span>`).join('')}
+      </div>
+      <button type="button" class="vr-entrega-editar" data-abrir-datos>Editar</button>`;
+  }
+
+  if ($('vrEntrega')) {
+    $('vrEntrega').addEventListener('click', function (e) {
+      if (e.target.closest('[data-abrir-datos]')) abrirDatosDesdePedido();
+    });
+  }
+
+  // ===== BOTONES: dicen el siguiente paso (§4 y §5) =====
+  function textoCompletar() {
+    if (tipoVenta === 'mesa') return 'Elegir mesa ›';
+    return 'Completar datos de entrega ›';
+  }
+
+  function renderBotonPedido() {
+    const btn = $('vrBtnConfirmarImprimir');
+    const falta = $('vrFaltaPedido');
+    const nota = $('vrNotaPedido');
+    const paso = siguientePaso();
+    const faltan = camposFaltantes();
+    const textoConfirmar = PEDIDO_ID ? 'Agregar e imprimir' : 'Confirmar e imprimir';
+
+    btn.classList.toggle('vr-btn-completar', paso === 'completar' && esMovil());
+    falta.hidden = paso !== 'completar';
+    falta.textContent = `Falta: ${enLista(faltan, FALTA_LARGO)}`;
+    nota.hidden = paso !== 'confirmar';
+
+    if (guardandoPedido) {
+      btn.disabled = true;
+      btn.textContent = 'Guardando…';
+    } else if (paso === 'agregar') {
+      btn.disabled = true;
+      btn.textContent = 'Agrega productos';
+    } else if (paso === 'completar') {
+      // En escritorio los datos están en este mismo panel: no hay hoja que abrir.
+      btn.disabled = !esMovil();
+      btn.textContent = esMovil() ? textoCompletar() : textoConfirmar;
+    } else {
+      btn.disabled = false;
+      btn.textContent = textoConfirmar;
+    }
+  }
+
+  function renderBotonDatos() {
+    const btn = $('vrTipoSheetListo');
+    if (!btn) return;
+    const paso = siguientePaso();
+    const total = dinero(totalProductos() + valorMoto());
+    const falta = $('vrFaltaDatos');
+    falta.hidden = paso !== 'completar';
+    falta.textContent = `Falta: ${enLista(camposFaltantes(), FALTA_LARGO)}`;
+    $('vrNotaDatos').hidden = paso !== 'agregar';
+
+    if (guardandoPedido) {
+      btn.disabled = true;
+      btn.textContent = 'Guardando…';
+    } else if (paso === 'agregar') {
+      btn.disabled = false;
+      btn.textContent = tipoVenta === 'delivery' ? 'Agregar productos ›' : 'Volver al menú';
+    } else {
+      btn.disabled = paso === 'completar';
+      btn.textContent = `Confirmar e imprimir · ${total}`;
+    }
+  }
+
+  $('vrBtnConfirmarImprimir').addEventListener('click', function () {
+    const paso = siguientePaso();
+    if (paso === 'completar') abrirDatosDesdePedido();
+    else if (paso === 'confirmar') guardarPedido();
   });
 
-  // ===== TIPO DE VENTA (Servirse / Llevar / Delivery) =====
-  let tipoVentaSeleccionado = 'llevar';
+  $('vrTipoSheetListo').addEventListener('click', function () {
+    if (siguientePaso() === 'confirmar') guardarPedido();
+    else cerrarDatos();
+  });
 
   // ===== TECLADO DE MESAS (modo Servirse) =====
   function renderMesaGrid() {
-    const cont = document.getElementById('vrMesaGrid');
+    const cont = $('vrMesaGrid');
     if (!cont) return;
     const mesas = catalogo.mesas || [];
     const libres = mesas.filter(m => m.libre).length;
-    const libresLabel = document.getElementById('vrMesasLibresCount');
+    const libresLabel = $('vrMesasLibresCount');
     if (libresLabel) libresLabel.textContent = `${libres} libre${libres === 1 ? '' : 's'}`;
 
-    const seleccionada = document.getElementById('vrMesaSelect').value;
+    const seleccionada = $('vrMesaSelect').value;
     cont.innerHTML = '';
     mesas.forEach(function (m) {
       const activa = String(m.id) === String(seleccionada);
@@ -482,17 +757,14 @@
   let personasEditadasAMano = false;
 
   function renderPersonas() {
-    const num = document.getElementById('vrPersonasNum');
+    const num = $('vrPersonasNum');
     if (!num) return;
     num.textContent = String(personasSeleccionadas);
-    document.getElementById('vrPersonasTexto').textContent = personasSeleccionadas === 1 ? 'persona' : 'personas';
-    document.getElementById('vrPersonasMenos').disabled = personasSeleccionadas <= 1;
+    $('vrPersonasTexto').textContent = personasSeleccionadas === 1 ? 'persona' : 'personas';
+    $('vrPersonasMenos').disabled = personasSeleccionadas <= 1;
 
     const mesa = mesaSeleccionada();
-    const hint = document.getElementById('vrPersonasHint');
-    hint.textContent = mesa
-      ? `Mesa ${mesa.nombre || mesa.numero} · ${mesa.capacidad} puestos`
-      : '';
+    $('vrPersonasHint').textContent = mesa ? `Mesa ${mesa.nombre || mesa.numero} · ${mesa.capacidad} puestos` : '';
   }
 
   function cambiarPersonas(delta) {
@@ -501,16 +773,16 @@
     personasSeleccionadas = nuevo;
     personasEditadasAMano = true;
     renderPersonas();
-    actualizarTextoContinuar();
+    actualizarOrden();
   }
 
   function mesaSeleccionada() {
-    const mesaId = document.getElementById('vrMesaSelect').value;
+    const mesaId = $('vrMesaSelect').value;
     return (catalogo.mesas || []).find(m => String(m.id) === String(mesaId)) || null;
   }
 
   function seleccionarMesa(mesaId) {
-    document.getElementById('vrMesaSelect').value = String(mesaId);
+    $('vrMesaSelect').value = String(mesaId);
     // Solo autocompletamos mientras el mesero no haya tocado el stepper: si ya
     // ajustó el número a mano, cambiar de mesa no debe pisarle el dato.
     if (!personasEditadasAMano) {
@@ -519,365 +791,364 @@
     }
     renderMesaGrid();
     renderPersonas();
-    actualizarTextoContinuar();
-    actualizarBotonesConfirmar();
-    actualizarResumenSubheader();
+    actualizarOrden();
   }
 
-  // ===== SUBHEADER COMO "RECIBO" (handoff_pos_movil/README.md §3) =====
-  // Mesa: verde si ya hay mesa asignada, rojo si falta. Llevar: nombre del
-  // cliente (o "Sin nombre"). Delivery: teléfono + valor de la moto (rojo
-  // si aún no se fija el envío).
-  function actualizarResumenSubheader() {
-    // Al agregar a un pedido ya abierto el tipo no se puede cambiar, así que
-    // el resumen que ya renderizó el servidor (con los datos reales
-    // guardados) es el correcto — no lo pisamos con el estado del JS.
-    if (PEDIDO_ID) return;
-    const el = document.getElementById('pzshResumen');
-    if (!el) return;
-    const numero = window.PZ_NUMERO_STR || '';
-    const mesero = window.PZ_MESERO_NOMBRE || '';
-    let html;
-    if (tipoVentaSeleccionado === 'mesa') {
-      const mesaId = document.getElementById('vrMesaSelect').value;
-      const mesa = (catalogo.mesas || []).find(m => String(m.id) === mesaId);
-      html = `#${numero} · ` + (mesa
-        ? `<strong class="pzsh-hl-verde">Mesa ${escapeHtml(mesa.nombre || String(mesa.numero))}</strong>`
-        : `<strong class="pzsh-hl-rojo">Falta mesa</strong>`);
-    } else if (tipoVentaSeleccionado === 'llevar') {
-      const nombre = document.getElementById('vrNombreLlevar').value.trim();
-      html = `#${numero} · <strong class="pzsh-hl-neutro">${escapeHtml(nombre || 'Sin nombre')}</strong> · ${escapeHtml(mesero)}`;
-    } else {
-      const tel = document.getElementById('vrTelefonoDelivery').value.trim();
-      const valor = document.getElementById('vrValorMoto').value;
-      const pre = tel ? `${escapeHtml(tel)} · ` : '';
-      html = pre + (valor
-        ? `<strong class="pzsh-hl-neutro">envío $${parseFloat(valor).toFixed(2)}</strong>`
-        : `<strong class="pzsh-hl-rojo">Falta envío</strong>`);
-    }
-    el.innerHTML = html;
-  }
+  $('vrPersonasMenos').addEventListener('click', function () { cambiarPersonas(-1); });
+  $('vrPersonasMas').addEventListener('click', function () { cambiarPersonas(1); });
 
   // ===== CHIPS "RECIENTES" (modo Llevar) =====
   function renderClientesRecientes() {
-    const cont = document.getElementById('vrClientesRecientes');
+    const cont = $('vrClientesRecientes');
     if (!cont) return;
     cont.innerHTML = '';
+    const elegir = function (nombre) {
+      $('vrNombreLlevar').value = nombre;
+      datosTocados = true;
+      actualizarOrden();
+    };
     (catalogo.clientes_recientes || []).forEach(function (nombre) {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'vr-modo-chip';
       chip.textContent = nombre;
-      chip.addEventListener('click', function () {
-        document.getElementById('vrNombreLlevar').value = nombre;
-        actualizarBotonesConfirmar();
-        actualizarResumenSubheader();
-      });
+      chip.addEventListener('click', function () { elegir(nombre); });
       cont.appendChild(chip);
     });
     const sinNombre = document.createElement('button');
     sinNombre.type = 'button';
     sinNombre.className = 'vr-modo-chip vr-modo-chip-sinnombre';
     sinNombre.textContent = 'Sin nombre';
-    sinNombre.addEventListener('click', function () {
-      document.getElementById('vrNombreLlevar').value = '';
-      actualizarBotonesConfirmar();
-      actualizarResumenSubheader();
-    });
+    sinNombre.addEventListener('click', function () { elegir(''); });
     cont.appendChild(sinNombre);
   }
 
+  // ===== MODO (Servirse / Llevar / Delivery) =====
   function actualizarGrupoClienteDatos() {
-    document.getElementById('vrGrupoMesa').classList.toggle('d-none', tipoVentaSeleccionado !== 'mesa');
-    document.getElementById('vrGrupoLlevar').classList.toggle('d-none', tipoVentaSeleccionado !== 'llevar');
-    document.getElementById('vrGrupoDelivery').classList.toggle('d-none', tipoVentaSeleccionado !== 'delivery');
+    $('vrGrupoMesa').classList.toggle('d-none', tipoVenta !== 'mesa');
+    $('vrGrupoLlevar').classList.toggle('d-none', tipoVenta !== 'llevar');
+    $('vrGrupoDelivery').classList.toggle('d-none', tipoVenta !== 'delivery');
+    document.querySelectorAll('.vr-modo-tab').forEach(t => {
+      const activa = t.dataset.tipo === tipoVenta;
+      t.classList.toggle('vr-modo-tab-active', activa);
+      t.setAttribute('aria-selected', activa ? 'true' : 'false');
+    });
   }
 
-  // ===== TABS DE MODO (Servirse/Llevar/Delivery) =====
-  const TIPO_LABELS_UI = { mesa: 'Servirse', llevar: 'Llevar', delivery: 'Delivery' };
+  function cambiarModo(tipo) {
+    if (tipo === tipoVenta) return;
+    // El nombre es el único dato común: pasa al modo nuevo si ahí está vacío.
+    const nombre = nombreCliente();
+    tipoVenta = tipo;
+    const destino = $(CAMPO_NOMBRE[tipo]);
+    if (nombre && destino && !destino.value.trim()) destino.value = nombre;
+    datosTocados = true;
+    actualizarGrupoClienteDatos();
+    actualizarOrden();
+  }
 
   document.querySelectorAll('.vr-modo-tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      tipoVentaSeleccionado = this.dataset.tipo;
-      document.querySelectorAll('.vr-modo-tab').forEach(t => t.classList.toggle('vr-modo-tab-active', t === this));
-      actualizarPillTipo();
-      actualizarGrupoClienteDatos();
-      actualizarTextoContinuar();
-      actualizarBotonesConfirmar();
-      actualizarResumenSubheader();
-    });
+    tab.addEventListener('click', function () { cambiarModo(this.dataset.tipo); });
   });
 
   // ===== UBICACIÓN RESPONSIVE DE #vrTipoYDatos =====
-  // En desktop vive inline dentro de #vrCart (posición original, barra
-  // lateral siempre visible). En mobile/tablet (≤1023px) se muda dentro de
-  // la hoja #vrTipoSheet, que el pill del subheader abre bajo demanda —
-  // evita tener el mismo control repetido en dos sitios a la vez.
+  // En desktop vive inline dentro de #vrCart (barra lateral siempre
+  // visible). En mobile/tablet (≤1023px) se muda dentro de la hoja
+  // "Datos de la orden", que abre la zona izquierda de la barra de orden.
   (function () {
-    const wrap = document.getElementById('vrTipoYDatos');
-    const sheetBody = document.getElementById('vrTipoSheetBody');
+    const wrap = $('vrTipoYDatos');
+    const sheetBody = $('vrTipoSheetBody');
     if (!wrap || !sheetBody) return;
     const originalParent = wrap.parentNode;
     const originalNext = wrap.nextSibling;
     let enHoja = false;
 
     function actualizarUbicacion() {
-      const esAngosto = window.innerWidth <= 1023;
-      if (esAngosto && !enHoja) { sheetBody.appendChild(wrap); enHoja = true; }
-      else if (!esAngosto && enHoja) { originalParent.insertBefore(wrap, originalNext); enHoja = false; }
+      const angosto = esMovil();
+      if (angosto && !enHoja) { sheetBody.appendChild(wrap); enHoja = true; }
+      else if (!angosto && enHoja) { originalParent.insertBefore(wrap, originalNext); enHoja = false; }
     }
 
     actualizarUbicacion();
-    window.addEventListener('resize', actualizarUbicacion);
+    window.addEventListener('resize', function () { actualizarUbicacion(); actualizarOrden(); });
   })();
 
-  // ===== PILL DE TIPO DE PEDIDO (subheader) =====
-  // Ya no es clickeable: es solo un badge informativo (ver
-  // pizzeria/handoff_pos_movil/README.md). Quien abre la hoja de modo es el
-  // botón "⋯" (#pzshMasOpciones), no el pill. Solo existe cuando no hay
-  // PEDIDO_ID: al agregar a un pedido abierto el tipo ya no se puede cambiar.
-  const pillTipo = document.getElementById('pzshTipoPedido');
-  const masOpciones = document.getElementById('pzshMasOpciones');
-  const tipoSheet = document.getElementById('vrTipoSheet');
-  const tipoSheetBackdrop = document.getElementById('vrTipoSheetBackdrop');
-  const tipoSheetListo = document.getElementById('vrTipoSheetListo');
+  // ===== HOJAS: Datos, Pedido y "⋯" =====
+  const hojaDatos = $('vrTipoSheet');
+  const fondoDatos = $('vrTipoSheetBackdrop');
+  const hojaPedido = $('vrCart');
+  const fondoPedido = $('vrPedidoBackdrop');
+  const hojaMas = $('vrMasSheet');
+  const fondoMas = $('vrMasBackdrop');
+  const masOpciones = $('pzshMasOpciones');
+
   if (window.pzMoverAlBodyEnMobile) {
-    window.pzMoverAlBodyEnMobile(tipoSheet);
-    window.pzMoverAlBodyEnMobile(tipoSheetBackdrop);
+    [hojaDatos, fondoDatos, hojaPedido, fondoPedido, hojaMas, fondoMas, $('vrBarraOrden')]
+      .forEach(el => el && window.pzMoverAlBodyEnMobile(el));
   }
 
-  const cartTipoPill = document.getElementById('vrCartTipoPill');
+  function hojaAbierta(hoja) { return hoja.classList.contains('pz-cart-sheet-open'); }
 
-  function actualizarPillTipo() {
-    if (pillTipo) {
-      const label = pillTipo.querySelector('.pzsh-pill-label');
-      if (label) label.textContent = TIPO_LABELS_UI[tipoVentaSeleccionado] || '';
-      pillTipo.classList.toggle('pzsh-pill-tono-delivery', tipoVentaSeleccionado === 'delivery');
-      pillTipo.classList.toggle('pzsh-pill-tono-oscuro', tipoVentaSeleccionado !== 'delivery');
-    }
-    // Pill del carrito (handoff visual "Pedido #001 · Llevar ▾") — mismo
-    // dato que el pill del subheader, sincronizados desde una sola fuente
-    // (tipoVentaSeleccionado) para no repetir la lógica dos veces.
-    if (cartTipoPill) {
-      const icono = cartTipoPill.querySelector('i');
-      cartTipoPill.textContent = (TIPO_LABELS_UI[tipoVentaSeleccionado] || '') + ' ';
-      if (icono) cartTipoPill.appendChild(icono);
-      cartTipoPill.classList.toggle('vr-cart-tipo-pill-delivery', tipoVentaSeleccionado === 'delivery');
-    }
+  function abrirHoja(hoja, fondo) {
+    hoja.classList.add('pz-cart-sheet-open');
+    fondo.classList.add('active');
   }
 
-  // El texto del botón "Continuar" confirma lo elegido (ver
-  // handoff_pos_movil/README.md: "Continuar · Mesa 6", "Continuar · envío $2.50").
-  function actualizarTextoContinuar() {
-    if (!tipoSheetListo) return;
-    let texto = 'Continuar';
-    if (tipoVentaSeleccionado === 'mesa') {
-      const mesa = mesaSeleccionada();
-      if (mesa) texto = `Continuar · Mesa ${mesa.nombre || mesa.numero} · ${personasSeleccionadas}p`;
-    } else if (tipoVentaSeleccionado === 'delivery') {
-      const valor = document.getElementById('vrValorMoto').value;
-      if (valor) texto = `Continuar · envío $${parseFloat(valor).toFixed(2)}`;
-    }
-    tipoSheetListo.textContent = texto;
+  function cerrarHoja(hoja, fondo) {
+    hoja.classList.remove('pz-cart-sheet-open');
+    fondo.classList.remove('active');
   }
 
-  function abrirTipoSheet() {
-    if (!tipoSheet) return;
-    tipoSheet.classList.add('pz-cart-sheet-open');
-    if (tipoSheetBackdrop) tipoSheetBackdrop.classList.add('active');
+  function abrirDatos() {
+    if (PEDIDO_ID || !esMovil()) return;
+    cerrarPedido();
+    cerrarMas();
+    abrirHoja(hojaDatos, fondoDatos);
+  }
+
+  // Cerrar (con el botón, el overlay, Esc o deslizando) conserva lo escrito.
+  function cerrarDatos() {
+    if (!hojaAbierta(hojaDatos)) return;
+    cerrarHoja(hojaDatos, fondoDatos);
+    datosTocados = true;
+    actualizarOrden();
+  }
+
+  function abrirPedido() {
+    if (!esMovil()) return;
+    cerrarDatos();
+    cerrarMas();
+    abrirHoja(hojaPedido, fondoPedido);
+  }
+
+  function cerrarPedido() { cerrarHoja(hojaPedido, fondoPedido); }
+
+  function abrirDatosDesdePedido() {
+    cerrarPedido();
+    abrirDatos();
+  }
+
+  function abrirMas() {
+    if (!hojaMas) return;
+    cerrarDatos();
+    cerrarPedido();
+    abrirHoja(hojaMas, fondoMas);
     if (masOpciones) masOpciones.setAttribute('aria-expanded', 'true');
-    actualizarTextoContinuar();
   }
 
-  function cerrarTipoSheet() {
-    if (!tipoSheet) return;
-    tipoSheet.classList.remove('pz-cart-sheet-open');
-    if (tipoSheetBackdrop) tipoSheetBackdrop.classList.remove('active');
+  function cerrarMas() {
+    if (!hojaMas) return;
+    cerrarHoja(hojaMas, fondoMas);
     if (masOpciones) masOpciones.setAttribute('aria-expanded', 'false');
   }
 
-  if (tipoSheetListo) tipoSheetListo.addEventListener('click', cerrarTipoSheet);
-  if (tipoSheetBackdrop) tipoSheetBackdrop.addEventListener('click', cerrarTipoSheet);
+  $('vrBarraDatos').addEventListener('click', abrirDatos);
+  $('vrBarraPedido').addEventListener('click', function () {
+    if (hojaAbierta(hojaPedido)) cerrarPedido(); else abrirPedido();
+  });
+  fondoDatos.addEventListener('click', cerrarDatos);
+  fondoPedido.addEventListener('click', cerrarPedido);
+  if (fondoMas) fondoMas.addEventListener('click', cerrarMas);
+  if (masOpciones) masOpciones.addEventListener('click', abrirMas);
+  if ($('vrMasVaciar')) {
+    $('vrMasVaciar').addEventListener('click', function () { cerrarMas(); vaciarPedido(); });
+  }
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') cerrarTipoSheet();
+    if (e.key !== 'Escape') return;
+    cerrarDatos();
+    cerrarPedido();
+    cerrarMas();
   });
 
-  // ===== ACCIÓN DEL SUBHEADER "⋯" → abre la hoja de modo =====
-  if (masOpciones) masOpciones.addEventListener('click', abrirTipoSheet);
+  // Deslizar hacia abajo cierra la hoja (solo si su contenido está arriba
+  // del todo, para no pelear con el scroll interno).
+  function permitirDeslizar(hoja, cerrar) {
+    if (!hoja) return;
+    let inicioY = null;
+    let dy = 0;
+    hoja.addEventListener('touchstart', function (e) {
+      if (!hojaAbierta(hoja) || hoja.scrollTop > 0 || e.target.closest('input, textarea, .vr-modo-envio')) {
+        inicioY = null;
+        return;
+      }
+      inicioY = e.touches[0].clientY;
+      dy = 0;
+    }, { passive: true });
+    hoja.addEventListener('touchmove', function (e) {
+      if (inicioY === null) return;
+      dy = Math.max(0, e.touches[0].clientY - inicioY);
+      if (dy > 0) {
+        hoja.style.transition = 'none';
+        hoja.style.transform = `translateY(calc(-1 * var(--pz-bottomnav-h) + ${dy}px))`;
+      }
+    }, { passive: true });
+    hoja.addEventListener('touchend', function () {
+      if (inicioY === null) return;
+      hoja.style.transition = '';
+      hoja.style.transform = '';
+      if (dy > 90) cerrar();
+      inicioY = null;
+    });
+  }
 
-  document.getElementById('vrPersonasMenos').addEventListener('click', function () { cambiarPersonas(-1); });
-  document.getElementById('vrPersonasMas').addEventListener('click', function () { cambiarPersonas(1); });
-  renderPersonas();
+  permitirDeslizar(hojaDatos, cerrarDatos);
+  permitirDeslizar(hojaPedido, cerrarPedido);
+  permitirDeslizar(hojaMas, cerrarMas);
 
-  ['vrMesaSelect', 'vrTelefonoDelivery'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', function () {
-      actualizarBotonesConfirmar();
-      actualizarResumenSubheader();
+  // ===== CAMPOS DE TEXTO =====
+  ['vrNombreMesa', 'vrNombreLlevar', 'vrNombreDelivery', 'vrNotasDelivery', 'vrTelefonoDelivery'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      datosTocados = true;
+      actualizarOrden();
     });
   });
-
-  document.getElementById('vrNombreLlevar').addEventListener('input', actualizarResumenSubheader);
 
   // ===== DATOS DE ENTREGA (Delivery): forma de pago =====
   // Efectivo: el motorizado cobra el total directo al cliente. Transferencia:
   // ya se cobró (o se cobra) por transferencia, así que el motorizado no
   // cobra nada al entregar — solo le pagamos su valor de moto aparte.
-  let pagoDeliverySeleccionado = null;
-
   document.querySelectorAll('#vrPagoDeliveryTabs .vr-modo-pago-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      pagoDeliverySeleccionado = this.dataset.valor;
+      pagoDelivery = this.dataset.valor;
       document.querySelectorAll('#vrPagoDeliveryTabs .vr-modo-pago-btn').forEach(function (b) {
         b.classList.toggle('vr-modo-pago-btn-active', b === btn);
       });
+      actualizarOrden();
     });
   });
 
-  // ===== DATOS DE ENTREGA (Delivery): costo de envío =====
-  function marcarBotonCostoEnvio(valor) {
+  // ===== DATOS DE ENTREGA (Delivery): valor de la moto =====
+  function marcarBotonMoto(valor) {
     document.querySelectorAll('#vrCostoEnvioTabs .vr-modo-envio-btn').forEach(function (btn) {
       btn.classList.toggle('vr-modo-envio-btn-active', valor !== null && btn.dataset.valor === valor);
     });
   }
 
-  function seleccionarCostoEnvio(valor) {
-    marcarBotonCostoEnvio(valor);
-    document.getElementById('vrValorMoto').value = valor === null ? '' : valor;
-    actualizarTextoContinuar();
-    actualizarResumenSubheader();
-  }
-
   document.querySelectorAll('#vrCostoEnvioTabs .vr-modo-envio-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () { seleccionarCostoEnvio(this.dataset.valor); });
+    btn.addEventListener('click', function () {
+      marcarBotonMoto(this.dataset.valor);
+      $('vrValorMoto').value = this.dataset.valor;
+      $('vrValorMoto').classList.remove('vr-modo-envio-otro-activo');
+      actualizarOrden();
+    });
   });
 
-  document.getElementById('vrValorMoto').addEventListener('input', function () {
-    marcarBotonCostoEnvio(null);
-    actualizarTextoContinuar();
-    actualizarResumenSubheader();
+  $('vrValorMoto').addEventListener('input', function () {
+    marcarBotonMoto(null);
+    this.classList.toggle('vr-modo-envio-otro-activo', this.value.trim() !== '');
+    actualizarOrden();
+  });
+
+  // ===== CLIENTE CONOCIDO POR TELÉFONO (§4) =====
+  // Debounce de 300 ms y mínimo 7 dígitos; "Usar" llena nombre y última dirección.
+  let busquedaTel = null;
+  let clienteConocido = null;
+
+  function ocultarClienteConocido() {
+    clienteConocido = null;
+    $('vrClienteConocido').hidden = true;
+  }
+
+  $('vrTelefonoDelivery').addEventListener('input', function () {
+    clearTimeout(busquedaTel);
+    const digitos = this.value.replace(/\D/g, '');
+    if (digitos.length < 7) { ocultarClienteConocido(); return; }
+    busquedaTel = setTimeout(function () {
+      fetch(`${window.PZ_URLS.buscarCliente}?tel=${encodeURIComponent(digitos)}`, { credentials: 'same-origin' })
+        .then(r => (r.ok ? r.json() : null))
+        .then(function (data) {
+          // Si el número cambió mientras llegaba la respuesta, se descarta.
+          if ($('vrTelefonoDelivery').value.replace(/\D/g, '') !== digitos) return;
+          if (!data || !data.encontrado) { ocultarClienteConocido(); return; }
+          clienteConocido = data;
+          const partes = ['Cliente conocido'];
+          if (data.nombre) partes.push(data.nombre);
+          partes.push(`${data.pedidos} ${plural(data.pedidos, 'pedido', 'pedidos')}`);
+          $('vrClienteConocidoTexto').textContent = partes.join(' · ');
+          $('vrClienteConocido').hidden = false;
+        })
+        .catch(function () { /* sin sugerencia: se escribe a mano */ });
+    }, 300);
+  });
+
+  $('vrClienteConocidoUsar').addEventListener('click', function () {
+    if (!clienteConocido) return;
+    if (clienteConocido.nombre) $('vrNombreDelivery').value = clienteConocido.nombre;
+    if (clienteConocido.direccion) $('vrNotasDelivery').value = clienteConocido.direccion;
+    ocultarClienteConocido();
+    datosTocados = true;
+    actualizarOrden();
   });
 
   // ===== CONFIRMAR PEDIDO (el cobro se hace luego en Órdenes) =====
-  let guardandoPedido = false;
-
-  function datosClienteValidos() {
-    if (PEDIDO_ID) return true;
-    if (tipoVentaSeleccionado === 'mesa') {
-      return !!document.getElementById('vrMesaSelect').value;
-    }
-    if (tipoVentaSeleccionado === 'delivery') {
-      return !!document.getElementById('vrTelefonoDelivery').value.trim();
-    }
-    return true;
-  }
-
-  function actualizarBotonesConfirmar() {
-    const deshabilitado = !carrito.length || guardandoPedido || !datosClienteValidos();
-    document.getElementById('vrBtnConfirmarImprimir').disabled = deshabilitado;
-  }
-
-  window.vrGuardarPedido = function (conImpresion) {
-    if (!carrito.length || guardandoPedido || !datosClienteValidos()) return;
+  function guardarPedido() {
+    if (siguientePaso() !== 'confirmar' || guardandoPedido) return;
     guardandoPedido = true;
-    actualizarBotonesConfirmar();
+    actualizarOrden();
 
     const body = new FormData();
     body.append('carrito', JSON.stringify(carrito));
-    body.append('imprimir', conImpresion ? 'true' : 'false');
-
-    let mesaIdUsada = null;
+    body.append('imprimir', 'true');
 
     if (PEDIDO_ID) {
       body.append('pedido_id', PEDIDO_ID);
     } else {
-      body.append('tipo', tipoVentaSeleccionado);
-      if (tipoVentaSeleccionado === 'mesa') {
-        mesaIdUsada = document.getElementById('vrMesaSelect').value;
-        body.append('mesa_id', mesaIdUsada);
+      body.append('tipo', tipoVenta);
+      if (tipoVenta === 'mesa') {
+        body.append('mesa_id', $('vrMesaSelect').value);
         body.append('personas', String(personasSeleccionadas));
-        body.append('nombre', document.getElementById('vrNombreMesa').value.trim());
-      } else if (tipoVentaSeleccionado === 'llevar') {
-        body.append('nombre', document.getElementById('vrNombreLlevar').value.trim());
-      } else if (tipoVentaSeleccionado === 'delivery') {
-        body.append('telefono', document.getElementById('vrTelefonoDelivery').value.trim());
-        body.append('nombre', document.getElementById('vrNombreDelivery').value.trim());
-        body.append('valor_moto', document.getElementById('vrValorMoto').value.trim());
-        body.append('pago_delivery', pagoDeliverySeleccionado || '');
-        body.append('observaciones', document.getElementById('vrNotasDelivery').value.trim());
+        body.append('nombre', $('vrNombreMesa').value.trim());
+      } else if (tipoVenta === 'llevar') {
+        body.append('nombre', $('vrNombreLlevar').value.trim());
+      } else {
+        body.append('telefono', telefono());
+        body.append('nombre', $('vrNombreDelivery').value.trim());
+        body.append('valor_moto', motoTexto());
+        body.append('pago_delivery', pagoDelivery || '');
+        body.append('observaciones', $('vrNotasDelivery').value.trim());
       }
     }
 
     fetch(window.PZ_URLS.guardarPedido, { method: 'POST', body, headers: { 'X-CSRFToken': window.CSRF_TOKEN } })
       .then(r => r.json())
       .then(data => {
-        if (data.status !== 'ok') { alert('Error al guardar el pedido: ' + data.message); return; }
-
-        if (PEDIDO_ID) {
-          window.location.href = window.PZ_URLS.detalleOrden;
+        if (data.status !== 'ok') {
+          alert('Error al guardar el pedido: ' + data.message);
+          guardandoPedido = false;
+          actualizarOrden();
           return;
         }
-
-        carrito.length = 0;
-        renderCarrito();
-        if (mesaIdUsada) {
-          const mesa = (catalogo.mesas || []).find(m => String(m.id) === String(mesaIdUsada));
-          if (mesa) mesa.libre = false;
-          document.getElementById('vrMesaSelect').value = '';
-          renderMesaGrid();
-        }
-        personasSeleccionadas = 1;
-        personasEditadasAMano = false;
-        renderPersonas();
-        document.getElementById('vrNombreMesa').value = '';
-        document.getElementById('vrNombreLlevar').value = '';
-        document.getElementById('vrTelefonoDelivery').value = '';
-        document.getElementById('vrNombreDelivery').value = '';
-        document.getElementById('vrValorMoto').value = '';
-        document.getElementById('vrNotasDelivery').value = '';
-        pagoDeliverySeleccionado = null;
-        document.querySelectorAll('#vrPagoDeliveryTabs .vr-modo-pago-btn').forEach(function (b) {
-          b.classList.remove('vr-modo-pago-btn-active');
-        });
-        seleccionarCostoEnvio(null);
-        actualizarTextoContinuar();
-        actualizarNumeroOrden(data.pedido.numero_dia + 1);
-        actualizarResumenSubheader();
-        mostrarToast(`Pedido #${data.pedido.numero_pedido_completo} confirmado`);
+        // Confirmada: vuelve a Órdenes (§6). Al agregar a un pedido, a su detalle.
+        window.location.href = PEDIDO_ID ? window.PZ_URLS.detalleOrden : window.PZ_URLS.ordenes;
       })
-      .catch(() => alert('Error inesperado al confirmar el pedido'))
-      .finally(() => {
+      .catch(() => {
+        alert('Error inesperado al confirmar el pedido');
         guardandoPedido = false;
-        actualizarBotonesConfirmar();
+        actualizarOrden();
       });
-  };
+  }
 
   // ===== BÚSQUEDA =====
-  document.getElementById('vrBuscador').addEventListener('input', function () {
+  $('vrBuscador').addEventListener('input', function () {
     busqueda = this.value.trim();
     renderGrid();
   });
-
-  function preseleccionarMesa() {
-    const mesaId = catalogo.mesa_preseleccionada;
-    if (!mesaId || PEDIDO_ID) return;
-
-    tipoVentaSeleccionado = 'mesa';
-    document.querySelectorAll('.vr-modo-tab').forEach(t => t.classList.toggle('vr-modo-tab-active', t.dataset.tipo === 'mesa'));
-    actualizarPillTipo();
-    actualizarGrupoClienteDatos();
-
-    seleccionarMesa(mesaId);
-  }
 
   // ===== INIT =====
   document.addEventListener('DOMContentLoaded', function () {
     renderCategorias();
     renderGrid();
-    renderCarrito();
     renderMesaGrid();
+    renderPersonas();
     renderClientesRecientes();
     actualizarGrupoClienteDatos();
-    preseleccionarMesa();
-    actualizarResumenSubheader();
+    if (catalogo.mesa_preseleccionada && !PEDIDO_ID) {
+      // Desde Mesas: la mesa ya viene elegida, los datos están listos.
+      datosTocados = true;
+      seleccionarMesa(catalogo.mesa_preseleccionada);
+    }
+    renderCarrito();
+    // Una llamada de delivery empieza por los datos.
+    if (tipoVenta === 'delivery' && !PEDIDO_ID) abrirDatos();
   });
 })();

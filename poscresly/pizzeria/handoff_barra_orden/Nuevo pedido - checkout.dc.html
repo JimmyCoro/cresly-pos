@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:0; background:#eceef1; }
+  * { box-sizing:border-box; }
+  a { color:#c8102e; text-decoration:none; }
+  a:hover { color:#a90d27; }
+</style>
+</helmet>
+
+<section style="padding:40px 40px 0;display:flex;flex-direction:column;gap:28px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;color:#14181d;font-feature-settings:'tnum' 1">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:900px">
+    <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-.025em">+ abre el menú · los datos a un toque desde ahí</h1>
+    <p style="margin:0;font-size:14px;color:#4a545f;text-wrap:pretty">＋ sigue abriendo el menú directo. La barra de la orden aparece desde el primer momento, vacía, con un botón de datos. Si es una llamada, se toca primero; si no, se empiezan a agregar productos.</p>
+  </div>
+
+  <div id="3a" style="display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px;align-self:flex-start">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="padding:4px 10px;border-radius:999px;background:#14181d;color:#fff;font-size:12px;font-weight:800">3a</span>
+      <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Barra de orden visible desde el +</span>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+
+      <sc-for list="{{ step3 }}" as="s" hint-placeholder-count="2">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">{{ s.label }}</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#f4f5f7;display:flex;flex-direction:column">
+          <div style="height:52px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:8px;padding:0 10px">
+            <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">☰</div>
+            <div style="width:30px;height:30px;border-radius:999px;background:#fdecef;border:1px solid #f4d3d9"></div>
+            <div style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font-size:13.5px;font-weight:800">Cresly Pizzería</span><span style="font-size:10.5px;color:#8a929c;font-weight:600">Suc. Centro</span></div>
+            <div style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:#5b6673">☾</div>
+            <div style="width:34px;height:34px;border-radius:999px;background:#14181d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800">M</div>
+          </div>
+          <div style="height:56px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:10px;padding:0 12px">
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">‹</div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Nueva orden</span>
+              <span style="font-size:11px;font-weight:600;color:#8a929c">{{ s.subPre }}<span style="font-weight:800;color:{{ s.subHiColor }}">{{ s.subHi }}</span></span>
+            </div>
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:16px;color:#4a545f">⋯</div>
+          </div>
+          <div style="flex:1;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start;overflow:hidden">
+            <sc-for list="{{ products }}" as="p" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #eef0f3;border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:4px;min-height:128px">
+                <span style="font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#98a1ab">COMBO</span>
+                <span style="font-size:14px;font-weight:800;letter-spacing:-.01em">{{ p.name }}</span>
+                <span style="font-size:11.5px;color:#8a929c;line-height:1.4;flex:1">{{ p.desc }}</span>
+                <span style="font-size:14px;font-weight:800;color:#c8102e">{{ p.price }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;left:12px;right:12px;bottom:90px;background:#14181d;border-radius:16px;padding:8px;display:flex;align-items:center;gap:8px;box-shadow:0 10px 22px rgba(20,24,29,.22)">
+            <div style="flex:1;min-width:0;height:48px;border-radius:12px;background:#242b33;display:flex;align-items:center;gap:10px;padding:0 12px;outline:{{ s.dataOutline }}">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+                <span style="font-size:13.5px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.dataTitle }}</span>
+                <span style="font-size:11px;font-weight:700;color:{{ s.dataSubColor }}">{{ s.dataSub }}</span>
+              </div>
+              <span style="font-size:17px;font-weight:700;color:#a8afb8">›</span>
+            </div>
+            <div style="height:48px;padding:0 14px;border-radius:12px;background:{{ s.cartBg }};color:{{ s.cartColor }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:0 0 auto">
+              <span style="font-size:14px;font-weight:800">{{ s.cartTitle }}</span>
+              <span style="font-size:10.5px;font-weight:700;opacity:.8">{{ s.cartSub }}</span>
+            </div>
+          </div>
+          <div style="height:78px;flex:0 0 auto;background:#fff;border-top:1px solid #eef0f3;display:flex;align-items:center;justify-content:space-around;box-shadow:0 -8px 22px rgba(20,24,29,.07)">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <div style="padding:8px 12px;font-size:11px;font-weight:700;color:#8a929c">{{ t }}</div>
+            </sc-for>
+          </div>
+        </div>
+        <span style="font-size:11.5px;color:#5b6673;max-width:390px;line-height:1.45;text-wrap:pretty">{{ s.note }}</span>
+      </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:900px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px">
+    <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Qué cambió y por qué</span>
+    <sc-for list="{{ notes3 }}" as="n" hint-placeholder-count="4">
+      <div style="display:flex;flex-direction:column;gap:3px;padding-bottom:12px;border-bottom:1px solid #eef0f3">
+        <span style="font-size:13.5px;font-weight:800">{{ n.t }}</span>
+        <span style="font-size:12.5px;color:#4a545f;line-height:1.5;text-wrap:pretty">{{ n.d }}</span>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section style="padding:40px 40px 0;display:flex;flex-direction:column;gap:28px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;color:#14181d;font-feature-settings:'tnum' 1">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:900px">
+    <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-.025em">Delivery · datos antes o después, en cualquier orden</h1>
+    <p style="margin:0;font-size:14px;color:#4a545f;text-wrap:pretty">Delivery pide seis datos, así que no caben abiertos dentro del carrito. El formulario es una pantalla propia y en el pedido queda resumido en una tarjeta. La barra de la orden existe desde el primer dato, con o sin productos. El botón del formulario cambia según lo que falte después.</p>
+  </div>
+
+  <div id="2a" style="display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px;align-self:flex-start">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="padding:4px 10px;border-radius:999px;background:#14181d;color:#fff;font-size:12px;font-weight:800">2a</span>
+      <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Formulario propio + tarjeta resumen + barra de orden</span>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+
+      <!-- A · datos primero -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">A · LLAMADA: DATOS PRIMERO</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:40px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Datos de entrega</span>
+              <span style="flex:1"></span>
+              <span style="font-size:11px;font-weight:700;color:#8a929c">#006</span>
+            </div>
+            <div style="display:flex;gap:6px;padding:4px;border-radius:13px;background:#f4f5f7">
+              <div style="flex:1;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Servirse</div>
+              <div style="flex:1;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Llevar</div>
+              <div style="flex:1;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#14181d;color:#fff">Delivery</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">TELÉFONO</span>
+              <div style="height:48px;border-radius:12px;border:1.5px solid #14181d;display:flex;align-items:center;padding:0 13px;font-size:15px;font-weight:700;letter-spacing:.01em">099 412 7781</div>
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:11px;background:#eaf6ef;border:1px solid #cfeadb">
+                <span style="flex:1;min-width:0;font-size:12px;font-weight:700;color:#1c7a4a">Cliente conocido · Marco Vera · 3 pedidos</span>
+                <span style="font-size:12px;font-weight:800;color:#1c7a4a">Usar</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">NOMBRE</span>
+              <div style="height:46px;border-radius:12px;border:1px solid #dfe2e7;display:flex;align-items:center;padding:0 13px;font-size:14px;font-weight:600">Marco Vera</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">DIRECCIÓN Y REFERENCIA</span>
+              <div style="min-height:58px;border-radius:12px;border:1px solid #dfe2e7;padding:11px 13px;font-size:13.5px;font-weight:600;line-height:1.4">Av. Olmedo 214 y Bolívar, casa verde junto a la farmacia</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">PAGO</span>
+              <div style="display:flex;gap:6px">
+                <span style="flex:1;height:40px;border-radius:11px;border:1.5px solid #14181d;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800">Efectivo</span>
+                <span style="flex:1;height:40px;border-radius:11px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Transferencia</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">MOTO</span><span style="font-size:11px;font-weight:600;color:#98a1ab">se suma al total</span></div>
+              <div style="display:flex;gap:6px;overflow:hidden;margin-right:-16px">
+                <sc-for list="{{ motos }}" as="m" hint-placeholder-count="6">
+                  <span style="flex:0 0 auto;height:40px;padding:0 13px;border-radius:11px;border:{{ m.border }};background:#fff;display:flex;align-items:center;font-size:13px;font-weight:800;color:{{ m.color }}">{{ m.v }}</span>
+                </sc-for>
+              </div>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="height:52px;border-radius:14px;background:#c8102e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 8px 18px rgba(200,16,46,.26)">Agregar productos ›</div>
+              <span style="text-align:center;font-size:11px;font-weight:700;color:#8a929c">Sin productos todavía · los datos se guardan en la orden</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B · catálogo con barra de orden -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">B · CATÁLOGO · LA BARRA YA EXISTE</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#f4f5f7;display:flex;flex-direction:column">
+          <div style="height:52px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:8px;padding:0 10px">
+            <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">☰</div>
+            <div style="width:30px;height:30px;border-radius:999px;background:#fdecef;border:1px solid #f4d3d9"></div>
+            <div style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font-size:13.5px;font-weight:800">Cresly Pizzería</span><span style="font-size:10.5px;color:#8a929c;font-weight:600">Suc. Centro</span></div>
+            <div style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:#5b6673">☾</div>
+            <div style="width:34px;height:34px;border-radius:999px;background:#14181d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800">M</div>
+          </div>
+          <div style="height:56px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:10px;padding:0 12px">
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">‹</div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Nueva orden</span>
+              <span style="font-size:11px;font-weight:600;color:#8a929c">#006 · Delivery · <span style="font-weight:800;color:#4a545f">Marco Vera</span></span>
+            </div>
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:16px;color:#4a545f">⋯</div>
+          </div>
+          <div style="flex:1;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start;overflow:hidden">
+            <sc-for list="{{ products }}" as="p" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #eef0f3;border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:4px;min-height:128px">
+                <span style="font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#98a1ab">COMBO</span>
+                <span style="font-size:14px;font-weight:800;letter-spacing:-.01em">{{ p.name }}</span>
+                <span style="font-size:11.5px;color:#8a929c;line-height:1.4;flex:1">{{ p.desc }}</span>
+                <span style="font-size:14px;font-weight:800;color:#c8102e">{{ p.price }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;left:12px;right:12px;bottom:90px;background:#14181d;border-radius:16px;padding:10px 10px 10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 22px rgba(20,24,29,.22)">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:15px;font-weight:800;color:#fff;letter-spacing:-.01em">Delivery · Marco Vera</span>
+              <span style="font-size:11px;font-weight:700;color:#a8afb8">Datos completos · <span style="color:#ff8a9b">0 productos</span></span>
+            </div>
+            <div style="height:44px;padding:0 14px;border-radius:12px;background:#2b333b;color:#c3c8ce;font-size:13.5px;font-weight:800;display:flex;align-items:center">Ver orden ⌃</div>
+          </div>
+          <div style="height:78px;flex:0 0 auto;background:#fff;border-top:1px solid #eef0f3;display:flex;align-items:center;justify-content:space-around;box-shadow:0 -8px 22px rgba(20,24,29,.07)">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <div style="padding:8px 12px;font-size:11px;font-weight:700;color:#8a929c">{{ t }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- C · hoja pedido completo -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">C · PEDIDO · ENTREGA RESUMIDA</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:150px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Pedido</span>
+              <span style="padding:4px 9px;border-radius:999px;background:#f4f5f7;font-size:12px;font-weight:800;color:#5b6673">#006</span>
+              <span style="flex:1"></span>
+              <span style="font-size:12.5px;font-weight:800;color:#5b6673">2 items</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:14px;background:#fafbfc;border:1px solid #e6e8ec">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">DELIVERY</span>
+                <span style="font-size:14px;font-weight:800">Marco Vera · 099 412 7781</span>
+                <span style="font-size:12px;font-weight:600;color:#5b6673;line-height:1.4">Av. Olmedo 214 y Bolívar, casa verde…</span>
+                <span style="font-size:12px;font-weight:700;color:#4a545f">Efectivo · moto $2.50</span>
+              </div>
+              <span style="height:38px;padding:0 12px;border-radius:999px;border:1px solid #dfe2e7;background:#fff;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:#4a545f">Editar</span>
+            </div>
+            <div style="display:flex;flex-direction:column;border:1px solid #eef0f3;border-radius:14px">
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid #eef0f3"><span style="font-size:13px;font-weight:800;color:#5b6673">1×</span><span style="flex:1;font-size:13.5px;font-weight:800">Mega Combo 1</span><span style="font-size:13.5px;font-weight:800">$20.50</span></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 12px"><span style="font-size:13px;font-weight:800;color:#5b6673">1×</span><span style="flex:1;font-size:13.5px;font-weight:800">Combo Tu y Yo</span><span style="font-size:13.5px;font-weight:800">$12.50</span></div>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#5b6673;font-weight:600">
+              <div style="display:flex;justify-content:space-between"><span>Productos</span><span>$33.00</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Moto</span><span>$2.50</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;color:#14181d;padding-top:6px;border-top:1px solid #eef0f3"><span style="font-size:17px;font-weight:800">Total</span><span style="font-size:26px;font-weight:800;letter-spacing:-.03em">$35.50</span></div>
+            </div>
+            <div style="height:52px;border-radius:14px;background:#c8102e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 8px 18px rgba(200,16,46,.26)">Confirmar e imprimir</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- D · productos primero, faltan datos -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">D · PRODUCTOS PRIMERO · FALTAN DATOS</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:150px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Pedido</span>
+              <span style="padding:4px 9px;border-radius:999px;background:#f4f5f7;font-size:12px;font-weight:800;color:#5b6673">#006</span>
+              <span style="flex:1"></span>
+              <span style="font-size:12.5px;font-weight:800;color:#5b6673">2 items</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:14px;background:#fdecef;border:1px solid #f4d3d9">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#c8102e">DELIVERY · FALTAN DATOS</span>
+                <span style="font-size:14px;font-weight:800">Teléfono, dirección y moto</span>
+                <span style="font-size:12px;font-weight:600;color:#5b6673">Toca para completar</span>
+              </div>
+              <span style="font-size:20px;font-weight:700;color:#c8102e">›</span>
+            </div>
+            <div style="display:flex;flex-direction:column;border:1px solid #eef0f3;border-radius:14px">
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid #eef0f3"><span style="font-size:13px;font-weight:800;color:#5b6673">1×</span><span style="flex:1;font-size:13.5px;font-weight:800">Mega Combo 1</span><span style="font-size:13.5px;font-weight:800">$20.50</span></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 12px"><span style="font-size:13px;font-weight:800;color:#5b6673">1×</span><span style="flex:1;font-size:13.5px;font-weight:800">Combo Tu y Yo</span><span style="font-size:13.5px;font-weight:800">$12.50</span></div>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:17px;font-weight:800">Total</span><span style="font-size:26px;font-weight:800;letter-spacing:-.03em">$33.00</span></div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="height:52px;border-radius:14px;background:#14181d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">Completar datos de entrega ›</div>
+              <span style="text-align:center;font-size:11px;font-weight:700;color:#c8102e">Falta: teléfono, dirección, valor de la moto</span>
+            </div>
+          </div>
+        </div>
+        <span style="font-size:11.5px;color:#5b6673;max-width:390px;line-height:1.45">Abre el formulario A. Como ya hay productos, su botón dice <b>Confirmar e imprimir · $35.50</b> en vez de "Agregar productos".</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:900px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px">
+    <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Qué cambió y por qué</span>
+    <sc-for list="{{ notes2 }}" as="n" hint-placeholder-count="5">
+      <div style="display:flex;flex-direction:column;gap:3px;padding-bottom:12px;border-bottom:1px solid #eef0f3">
+        <span style="font-size:13.5px;font-weight:800">{{ n.t }}</span>
+        <span style="font-size:12.5px;color:#4a545f;line-height:1.5;text-wrap:pretty">{{ n.d }}</span>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section style="padding:40px;display:flex;flex-direction:column;gap:28px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif;color:#14181d;font-feature-settings:'tnum' 1">
+  <div style="display:flex;flex-direction:column;gap:6px;max-width:900px">
+    <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-.025em">Nuevo pedido · modo y datos sin ir y volver</h1>
+    <p style="margin:0;font-size:14px;color:#4a545f;text-wrap:pretty">Hoy: agregar → ⋯ → modo y datos → Continuar → Ver pedido → Confirmar. Son dos hojas distintas para cerrar una orden. Las dos variantes dejan el modo y sus datos en el camino hacia Confirmar, sin pasar por el ⋯.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start">
+
+  <!-- ================= 1a ================= -->
+  <div id="1a" style="display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="padding:4px 10px;border-radius:999px;background:#14181d;color:#fff;font-size:12px;font-weight:800">1a</span>
+      <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Datos dentro del pedido</span>
+      <span style="padding:3px 9px;border-radius:999px;background:#eaf6ef;color:#1c7a4a;font-size:11px;font-weight:800;letter-spacing:.05em">RECOMENDADA</span>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+
+      <!-- 1a · pantalla 1 -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">1 · CATÁLOGO, LA BARRA AVISA</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#f4f5f7;display:flex;flex-direction:column">
+          <div style="height:52px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:8px;padding:0 10px">
+            <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">☰</div>
+            <div style="width:30px;height:30px;border-radius:999px;background:#fdecef;border:1px solid #f4d3d9"></div>
+            <div style="display:flex;flex-direction:column;flex:1;min-width:0"><span style="font-size:13.5px;font-weight:800">Cresly Pizzería</span><span style="font-size:10.5px;color:#8a929c;font-weight:600">Suc. Centro</span></div>
+            <div style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:#5b6673">☾</div>
+            <div style="width:34px;height:34px;border-radius:999px;background:#14181d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800">C</div>
+          </div>
+          <div style="height:56px;flex:0 0 auto;background:#fff;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:10px;padding:0 12px">
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">‹</div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Nueva orden</span>
+              <span style="font-size:11px;font-weight:600;color:#8a929c">#005 · <span style="font-weight:800;color:#4a545f">Llevar</span> · <span style="font-weight:800;color:#c8102e">sin nombre</span></span>
+            </div>
+            <div style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:16px;color:#4a545f">⋯</div>
+          </div>
+          <div style="flex:1;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start;overflow:hidden">
+            <sc-for list="{{ products }}" as="p" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #eef0f3;border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:4px;min-height:128px">
+                <span style="font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#98a1ab">COMBO</span>
+                <span style="font-size:14px;font-weight:800;letter-spacing:-.01em">{{ p.name }}</span>
+                <span style="font-size:11.5px;color:#8a929c;line-height:1.4;flex:1">{{ p.desc }}</span>
+                <span style="font-size:14px;font-weight:800;color:#c8102e">{{ p.price }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;left:12px;right:12px;bottom:90px;background:#14181d;border-radius:16px;padding:10px 10px 10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 22px rgba(20,24,29,.22)">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:15px;font-weight:800;color:#fff;letter-spacing:-.01em">1 item · $20.50</span>
+              <span style="font-size:11px;font-weight:700;color:#a8afb8">Llevar · <span style="color:#ff8a9b">falta nombre</span></span>
+            </div>
+            <div style="height:44px;padding:0 16px;border-radius:12px;background:#c8102e;color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center">Ver pedido ⌃</div>
+          </div>
+          <div style="height:78px;flex:0 0 auto;background:#fff;border-top:1px solid #eef0f3;display:flex;align-items:center;justify-content:space-around;box-shadow:0 -8px 22px rgba(20,24,29,.07)">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#8a929c">{{ t }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1a · pantalla 2 -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">2 · HOJA PEDIDO · LLEVAR</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:64px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:13px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Pedido</span>
+              <span style="padding:4px 9px;border-radius:999px;background:#f4f5f7;font-size:12px;font-weight:800;color:#5b6673">#005</span>
+              <span style="flex:1"></span>
+              <span style="font-size:12.5px;font-weight:800;color:#5b6673">1 item</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">PARA</span>
+              <div style="display:flex;gap:6px;padding:4px;border-radius:13px;background:#f4f5f7">
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Servirse</div>
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#14181d;color:#fff">Llevar</div>
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Delivery</div>
+              </div>
+              <div style="height:48px;border-radius:12px;border:1.5px solid #14181d;display:flex;align-items:center;padding:0 13px;font-size:14px;font-weight:600;color:#14181d">Yadira<span style="width:1.5px;height:18px;background:#c8102e;margin-left:2px"></span></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ recents }}" as="r" hint-placeholder-count="4">
+                  <span style="height:38px;padding:0 13px;border-radius:999px;border:1px solid #dfe2e7;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:#4a545f">{{ r }}</span>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="height:1px;background:#eef0f3"></div>
+
+            <div style="border:1px solid #eef0f3;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;gap:10px;align-items:baseline">
+                <span style="flex:1;font-size:14px;font-weight:800">Mega Combo 1 (Mediana)</span>
+                <span style="font-size:14px;font-weight:800">$20.50</span>
+              </div>
+              <span style="font-size:12px;font-weight:600;color:#8a5800;line-height:1.4">Champiñones · 6 broster · Inca Kola al ambiente</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="height:38px;padding:0 13px;border-radius:999px;border:1px solid #dfe2e7;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:#4a545f">Editar</span>
+                <span style="flex:1"></span>
+                <span style="width:38px;height:38px;border-radius:10px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:17px;color:#5b6673">−</span>
+                <span style="width:24px;text-align:center;font-size:15px;font-weight:800">1</span>
+                <span style="width:38px;height:38px;border-radius:10px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:17px;color:#5b6673">＋</span>
+              </div>
+            </div>
+
+            <span style="flex:1"></span>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#5b6673;font-weight:600">
+              <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>$17.83</span></div>
+              <div style="display:flex;justify-content:space-between"><span>IVA 15%</span><span>$2.67</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;color:#14181d;padding-top:6px;border-top:1px solid #eef0f3"><span style="font-size:17px;font-weight:800">Total</span><span style="font-size:26px;font-weight:800;letter-spacing:-.03em">$20.50</span></div>
+            </div>
+            <div style="height:52px;border-radius:14px;background:#c8102e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 8px 18px rgba(200,16,46,.26)">Confirmar e imprimir · Yadira</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1a · pantalla 3 -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">3 · MISMA HOJA · DELIVERY INCOMPLETO</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:64px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:13px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Pedido</span>
+              <span style="padding:4px 9px;border-radius:999px;background:#f4f5f7;font-size:12px;font-weight:800;color:#5b6673">#005</span>
+              <span style="flex:1"></span>
+              <span style="font-size:12.5px;font-weight:800;color:#5b6673">1 item</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <span style="font-size:11px;font-weight:800;letter-spacing:.09em;color:#8a929c">PARA</span>
+              <div style="display:flex;gap:6px;padding:4px;border-radius:13px;background:#f4f5f7">
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Servirse</div>
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Llevar</div>
+                <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#14181d;color:#fff">Delivery</div>
+              </div>
+              <div style="height:48px;border-radius:12px;border:1px solid #dfe2e7;display:flex;align-items:center;gap:10px;padding:0 13px;font-size:14px;font-weight:600"><span style="font-size:11px;font-weight:800;color:#98a1ab;letter-spacing:.06em;width:62px">TELÉF.</span>099 412 7781</div>
+              <div style="height:48px;border-radius:12px;border:1px solid #dfe2e7;display:flex;align-items:center;gap:10px;padding:0 13px;font-size:14px;font-weight:600"><span style="font-size:11px;font-weight:800;color:#98a1ab;letter-spacing:.06em;width:62px">NOMBRE</span>Marco Vera</div>
+              <div style="height:48px;border-radius:12px;border:1.5px solid #c8102e;background:#fdecef;display:flex;align-items:center;gap:10px;padding:0 13px;font-size:14px;font-weight:600;color:#c3c8ce"><span style="font-size:11px;font-weight:800;color:#c8102e;letter-spacing:.06em;width:62px">DIREC.</span>Calle, número, referencia</div>
+              <div style="display:flex;gap:6px">
+                <span style="flex:1;height:40px;border-radius:11px;border:1.5px solid #14181d;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">Centro · $1.50</span>
+                <span style="flex:1;height:40px;border-radius:11px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5b6673">Norte · $2.50</span>
+              </div>
+            </div>
+            <div style="height:1px;background:#eef0f3"></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid #eef0f3;border-radius:14px">
+              <span style="flex:1;min-width:0;font-size:13.5px;font-weight:800">1 × Mega Combo 1</span>
+              <span style="font-size:12px;font-weight:700;color:#8a929c">Ver ›</span>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:17px;font-weight:800">Total</span><span style="font-size:26px;font-weight:800;letter-spacing:-.03em">$22.00</span></div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="height:52px;border-radius:14px;background:#e9ebef;color:#a8afb8;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">Confirmar e imprimir</div>
+              <span style="text-align:center;font-size:11px;font-weight:700;color:#c8102e">Falta: dirección de entrega</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 1b ================= -->
+  <div id="1b" style="display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="padding:4px 10px;border-radius:999px;background:#14181d;color:#fff;font-size:12px;font-weight:800">1b</span>
+      <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Confirmar en dos pasos, misma hoja</span>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">PASO 1 · REVISAR</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:260px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:13px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Pedido</span>
+              <span style="padding:4px 9px;border-radius:999px;background:#f4f5f7;font-size:12px;font-weight:800;color:#5b6673">#005</span>
+              <span style="flex:1"></span>
+              <span style="font-size:11.5px;font-weight:800;color:#8a929c;letter-spacing:.06em">1 DE 2</span>
+            </div>
+            <div style="border:1px solid #eef0f3;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;gap:10px;align-items:baseline"><span style="flex:1;font-size:14px;font-weight:800">Mega Combo 1 (Mediana)</span><span style="font-size:14px;font-weight:800">$20.50</span></div>
+              <span style="font-size:12px;font-weight:600;color:#8a5800">Champiñones · 6 broster · Inca Kola al ambiente</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="height:38px;padding:0 13px;border-radius:999px;border:1px solid #dfe2e7;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:#4a545f">Editar</span>
+                <span style="flex:1"></span>
+                <span style="width:38px;height:38px;border-radius:10px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:17px;color:#5b6673">−</span>
+                <span style="width:24px;text-align:center;font-size:15px;font-weight:800">1</span>
+                <span style="width:38px;height:38px;border-radius:10px;border:1px solid #dfe2e7;display:flex;align-items:center;justify-content:center;font-size:17px;color:#5b6673">＋</span>
+              </div>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:17px;font-weight:800">Total</span><span style="font-size:26px;font-weight:800;letter-spacing:-.03em">$20.50</span></div>
+            <div style="height:52px;border-radius:14px;background:#c8102e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 8px 18px rgba(200,16,46,.26)">Continuar · datos del pedido ›</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;font-weight:800;color:#5b6673;letter-spacing:.06em">PASO 2 · PARA QUIÉN</span>
+        <div style="position:relative;width:390px;height:780px;border-radius:24px;overflow:hidden;border:1px solid #d6dae0;background:#c9ccd1">
+          <div style="position:absolute;inset:0;background:rgba(20,24,29,.42)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;top:260px;background:#fff;border-radius:22px 22px 0 0;padding:14px 16px 20px;display:flex;flex-direction:column;gap:13px">
+            <div style="width:38px;height:4px;border-radius:999px;background:#dfe2e7;margin:0 auto;flex:0 0 auto"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:38px;height:38px;border-radius:11px;border:1px solid #e6e8ec;display:flex;align-items:center;justify-content:center;font-size:18px;color:#4a545f">‹</span>
+              <span style="font-size:19px;font-weight:800;letter-spacing:-.02em">Para quién</span>
+              <span style="flex:1"></span>
+              <span style="font-size:11.5px;font-weight:800;color:#8a929c;letter-spacing:.06em">2 DE 2</span>
+            </div>
+            <div style="display:flex;gap:6px;padding:4px;border-radius:13px;background:#f4f5f7">
+              <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Servirse</div>
+              <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#14181d;color:#fff">Llevar</div>
+              <div style="flex:1;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5b6673">Delivery</div>
+            </div>
+            <div style="height:48px;border-radius:12px;border:1.5px solid #14181d;display:flex;align-items:center;padding:0 13px;font-size:14px;color:#c3c8ce">Nombre del cliente</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ recents }}" as="r" hint-placeholder-count="4">
+                <span style="height:38px;padding:0 13px;border-radius:999px;border:1px solid #dfe2e7;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:#4a545f">{{ r }}</span>
+              </sc-for>
+            </div>
+            <span style="flex:1"></span>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="height:52px;border-radius:14px;background:#c8102e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 8px 18px rgba(200,16,46,.26)">Confirmar e imprimir · $20.50</div>
+              <span style="text-align:center;font-size:11px;font-weight:700;color:#8a929c">Sin nombre se imprime como "Llevar #005"</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= NOTAS ================= -->
+  <div style="display:flex;flex-direction:column;gap:14px;width:340px;background:#fff;border:1px solid #dfe2e7;border-radius:22px;padding:22px">
+    <span style="font-size:17px;font-weight:800;letter-spacing:-.02em">Qué cambió y por qué</span>
+    <sc-for list="{{ notes }}" as="n" hint-placeholder-count="6">
+      <div style="display:flex;flex-direction:column;gap:3px;padding-bottom:12px;border-bottom:1px solid #eef0f3">
+        <span style="font-size:13.5px;font-weight:800">{{ n.t }}</span>
+        <span style="font-size:12.5px;color:#4a545f;line-height:1.5;text-wrap:pretty">{{ n.d }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      products: [
+        { name: 'Combo Tu y Yo', desc: '8 alitas + papas + 2 micheladas', price: '$12.50' },
+        { name: 'Combo Wings & Burguer', desc: '6 alitas + 2 hamburguesas + papas', price: '$15.00' },
+        { name: 'Mega Combo 1', desc: 'pizza + papas + 6 alitas + bebida', price: 'desde $16.50' },
+        { name: 'Mega Combo 2', desc: 'pizza + papas + bebida + helado', price: 'desde $16.00' },
+        { name: 'Mega Combo 3', desc: 'pizza + papas + 10 alitas + bebida', price: 'desde $20.00' },
+        { name: 'Mega Combo 4', desc: 'pizza + papas + 6 alitas + helado', price: 'desde $20.00' }
+      ],
+      tabs: ['Inicio', 'Mesas', 'Órdenes', 'Delivery'],
+      motos: ['$2.00', '$2.25', '$2.50', '$2.75', '$3.00', '$3.25', '$3.50', 'Otro'].map(v => ({
+        v, border: v === '$2.50' ? '1.5px solid #14181d' : '1px solid #dfe2e7', color: v === 'Otro' ? '#8a929c' : '#14181d'
+      })),
+      step3: [
+        { label: '1 · RECIÉN PULSADO + · ORDEN VACÍA', subPre: '#006 · Llevar · ', subHi: '0 productos', subHiColor: '#4a545f',
+          dataTitle: 'Llevar · sin cliente', dataSub: 'Toca para modo y datos', dataSubColor: '#a8afb8', dataOutline: '1.5px solid #e02040',
+          cartTitle: '0 items', cartSub: '$0.00', cartBg: '#2b333b', cartColor: '#8d97a2',
+          note: 'La barra ya está desde que se abre el menú. Izquierda: modo y datos, abre el formulario (Llevar o Delivery). Derecha: el pedido. En una llamada se toca la izquierda primero.' },
+        { label: '2 · DATOS LISTOS, AGREGANDO PRODUCTOS', subPre: '#006 · Delivery · ', subHi: 'Marco Vera', subHiColor: '#4a545f',
+          dataTitle: 'Delivery · Marco Vera', dataSub: 'Olmedo 214 · moto $2.50', dataSubColor: '#a8afb8', dataOutline: 'none',
+          cartTitle: '2 items', cartSub: '$35.50', cartBg: '#c8102e', cartColor: '#fff',
+          note: 'El formulario se cierra con "Volver al menú" y la barra queda como recibo. Tocar "2 items" abre el pedido, ya con los datos de entrega: solo queda Confirmar.' },
+        { label: '3 · CASO NORMAL · PRODUCTOS PRIMERO', subPre: '#006 · Delivery · ', subHi: 'falta dirección', subHiColor: '#c8102e',
+          dataTitle: 'Delivery · Marco Vera', dataSub: 'Falta: dirección y moto', dataSubColor: '#ff8a9b', dataOutline: '1.5px solid #e02040',
+          cartTitle: '2 items', cartSub: '$33.00', cartBg: '#c8102e', cartColor: '#fff',
+          note: 'Si primero se agregan productos, la misma barra avisa en rojo qué falta. Se completa desde aquí o desde la tarjeta roja dentro del pedido (variante 2a · D).' }
+      ],
+      notes3: [
+        { t: '+ no cambia', d: 'Sigue abriendo el menú directo. Así no se agrega ningún paso al caso más común.' },
+        { t: 'La barra se divide en dos', d: 'Modo y datos a la izquierda, el pedido a la derecha. Las dos están a un toque desde el menú, sin pasar por el ⋯.' },
+        { t: 'La izquierda resalta lo pendiente', d: 'Borde rojo mientras falte algo obligatorio. Cuando todo está completo pasa a neutro y muestra cliente y dirección.' },
+        { t: 'El ⋯ ya no se usa para esto', d: 'Queda solo para acciones secundarias y la zona de riesgo.' }
+      ],
+      notes2: [
+        { t: 'Una orden, no un carrito', d: 'La orden existe desde el primer dato que se captura, sea un producto o el teléfono. La barra flotante muestra modo, cliente y lo que falta.' },
+        { t: 'El formulario es una pantalla propia', d: 'Seis campos no caben abiertos dentro del carrito. En el pedido se ven como una tarjeta de cuatro líneas con Editar, o en rojo con la lista de lo que falta.' },
+        { t: 'El botón dice el siguiente paso', d: 'Sin productos dice "Agregar productos". Con productos dice "Confirmar e imprimir". La hoja Pedido sin datos dice "Completar datos de entrega". Nunca hay que adivinar a dónde ir.' },
+        { t: 'Teléfono primero', d: 'Buscar por teléfono trae nombre y última dirección de un cliente conocido. En una llamada se llenan cinco campos con un toque.' },
+        { t: 'Moto en una fila', d: 'Los valores van en una fila que se desplaza en lugar de dos filas de 4. Ahorra 50 px y el valor elegido queda visible.' }
+      ],
+      recents: ['Washington', 'Yadira', 'Marco', 'Cirsitam'],
+      notes: [
+        { t: 'El ⋯ deja de ser el camino', d: 'Modo y datos se capturan donde se confirma. El ⋯ queda para acciones secundarias y la zona de riesgo.' },
+        { t: '1a: una sola hoja', d: 'Modo, campos, items y total en la misma hoja. Cambiar de modo cambia solo los campos de arriba. Cero navegación extra.' },
+        { t: 'La barra flotante avisa', d: 'Debajo del total dice qué falta ("falta nombre") en rojo. El mesero lo sabe antes de abrir el pedido.' },
+        { t: 'Botón bloqueado con motivo', d: 'Delivery sin dirección: Confirmar en gris + "Falta: dirección de entrega", y el campo resaltado en rojo. Mismo campos_faltantes del backend.' },
+        { t: '1b: lineal, nunca hacia atrás', d: 'Revisar → Para quién → Confirmar. Más claro con muchos items, pero agrega un toque.' },
+        { t: 'Llevar sin nombre no bloquea', d: 'Se puede confirmar; el ticket sale como "Llevar #005". Solo Delivery y Servirse (mesa) bloquean.' },
+        { t: 'Modo por defecto', d: 'Se hereda del punto de entrada: desde Mesas → Servirse con mesa; desde Delivery → Delivery; desde ＋ → Llevar.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

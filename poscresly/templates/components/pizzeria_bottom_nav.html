@@ -20,7 +20,7 @@
   <a href="{% url 'pizzeria_ordenes' %}" class="pzbn-tab{% if '/pizzeria/ordenes/' in request.path %} pzbn-tab-active{% endif %}"{% if '/pizzeria/ordenes/' in request.path %} aria-current="page"{% endif %}>
     <i class="bi bi-list-ul"></i>
     <span class="pzbn-tab-label">Órdenes</span>
-    {% if pz_ordenes_abiertas %}<span class="pzbn-tab-badge">{{ pz_ordenes_abiertas }}</span>{% endif %}
+    <span class="pzbn-tab-badge" id="pzbnBadgeOrdenes"{% if not pz_ordenes_abiertas %} hidden{% endif %}>{{ pz_ordenes_abiertas|default:"" }}</span>
   </a>
   <a href="{% url 'pizzeria_caja' %}" class="pzbn-tab{% if '/pizzeria/caja/' in request.path %} pzbn-tab-active{% endif %}"{% if '/pizzeria/caja/' in request.path %} aria-current="page"{% endif %}>
     <i class="bi bi-cash-stack"></i>
@@ -61,5 +61,53 @@
 
     actualizarPosicion();
     window.addEventListener('resize', actualizarPosicion);
+  })();
+
+  // Badge de Órdenes en vivo. El número viene del servidor al cargar, pero
+  // pantallas como Nueva orden guardan sin recargar, y otros dispositivos
+  // también crean pedidos. Se vuelve a pedir el conteo cuando:
+  // - el servidor avisa por WebSocket que un pedido o mesa cambió,
+  // - esta pestaña dispara 'pz:ordenes-cambiaron' tras guardar,
+  // - la página vuelve desde el historial (atrás) o se vuelve visible.
+  (function () {
+    var badge = document.getElementById('pzbnBadgeOrdenes');
+    if (!badge) return;
+    var URL_CONTEO = "{% url 'pizzeria_contar_pedidos_abiertos' %}";
+    var pendiente = null;
+
+    function refrescar() {
+      // Agrupa avisos seguidos (un cobro manda varios) en una sola consulta.
+      clearTimeout(pendiente);
+      pendiente = setTimeout(function () {
+        fetch(URL_CONTEO, { credentials: 'same-origin', cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (!data) return;
+            badge.textContent = data.abiertos || '';
+            badge.hidden = !data.abiertos;
+          })
+          .catch(function () {});
+      }, 250);
+    }
+
+    window.addEventListener('pz:ordenes-cambiaron', refrescar);
+    window.addEventListener('pageshow', function (e) { if (e.persisted) refrescar(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') refrescar();
+    });
+
+    function conectar() {
+      var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var ws;
+      try { ws = new WebSocket(proto + '//' + location.host + '/ws/pizzeria/mesas/'); } catch (e) { return; }
+      ws.onmessage = function (e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (err) { return; }
+        if (msg.type === 'pedido_pizzeria_actualizado' || msg.type === 'mesa_actualizada') refrescar();
+      };
+      // Al reconectar se refresca por si hubo cambios mientras estuvo caído.
+      ws.onclose = function () { setTimeout(function () { conectar(); refrescar(); }, 3000); };
+    }
+    conectar();
   })();
 </script>
